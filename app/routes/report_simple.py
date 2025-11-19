@@ -54,11 +54,22 @@ if ReportIn is None:
         lat: float
         lng: float
         accuracy_m: Optional[int] = Field(default=None)
+
+        # 🔹 Contexte transport (fallback, même shape que schemas.py)
+        mode: Optional[str] = Field(default=None)
+        line_code: Optional[str] = Field(default=None)
+        direction: Optional[str] = Field(default=None)
+        current_stop: Optional[str] = Field(default=None)
+        next_stop: Optional[str] = Field(default=None)
+        final_stop: Optional[str] = Field(default=None)
+        train_state: Optional[str] = Field(default=None)
+
         note: Optional[str] = Field(default=None)
         photo_url: Optional[str] = Field(default=None)
         user_id: Optional[str] = Field(default=None)
-        device_id: Optional[str] = Field(default=None)         # ✅ ajouté
+        device_id: Optional[str] = Field(default=None)
         idempotency_key: Optional[str] = Field(default=None)
+
 
 router = APIRouter()
 
@@ -117,11 +128,21 @@ async def create_report(payload: Any = Body(...), db: AsyncSession = Depends(get
             lat=float(getattr(data, "lat")),
             lng=float(getattr(data, "lng")),
             accuracy_m=int(getattr(data, "accuracy_m", 0)) if getattr(data, "accuracy_m", None) is not None else None,
+
+            # 🔹 Nouveaux champs transport
+            mode=getattr(data, "mode", None),
+            line_code=getattr(data, "line_code", None),
+            direction=getattr(data, "direction", None),
+            current_stop=getattr(data, "current_stop", None),
+            next_stop=getattr(data, "next_stop", None),
+            final_stop=getattr(data, "final_stop", None),
+            train_state=getattr(data, "train_state", None),
+
             note=getattr(data, "note", None),
             photo_url=getattr(data, "photo_url", None),
             user_id=getattr(data, "user_id", None),
             idempotency_key=getattr(data, "idempotency_key", None),
-            device_id=getattr(data, "device_id", None),  # ✅ passe device_id si ton insert le supporte
+            device_id=getattr(data, "device_id", None),
         )
 
         # 4b) Signature HMAC (intégrité)
