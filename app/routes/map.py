@@ -316,9 +316,10 @@ async def upload_video(
         raise HTTPException(status_code=500, detail="no_public_url")
 
         # insérer dans attachments
+        # insérer dans attachments (version RATP simplifiée)
     ins = text("""
         INSERT INTO attachments (
-            kind, geom, user_id, url, idempotency_key, created_at, is_sensitive, uploader_id
+            kind, geom, user_id, url, idempotency_key, created_at
         )
         VALUES (
             :k,
@@ -326,39 +327,31 @@ async def upload_video(
             :uid,
             :url,
             :idem,
-            NOW(),
-            TRUE,
-            :uploader
+            NOW()
         )
         RETURNING id
     """)
-
-    try:
-        rs = await db.execute(
-            ins,
-            {
-                "k": K,
-                "lng": float(lng),
-                "lat": float(lat),
-                "uid": str(user_id) if user_id else None,
-                "url": url_public,
-                "idem": idem,
-                "uploader": str(user_id) if user_id else None,
-            },
-        )
-        row = rs.first()
-        await db.commit()
-    except Exception as e:
-        await db.rollback()
-        # 🔍 on renvoie l'erreur SQL pour qu'on la voie dans curl
-        raise HTTPException(status_code=500, detail=f"db_insert_error: {e}")
+    rs = await db.execute(
+        ins,
+        {
+            "k": K,
+            "lng": float(lng),
+            "lat": float(lat),
+            "uid": str(user_id) if user_id else None,
+            "url": url_public,
+            "idem": idem,
+        },
+    )
+    row = rs.first()
+    await db.commit()
 
     return {
         "ok": True,
-        "id": str(row.id) if row and hasattr(row, "id") else None,
+        "id": str(row.id),
         "url": url_public,
         "idempotency_key": idem,
     }
+
 
 
 @router.post("/maintenance/purge_old_attachments")
@@ -1063,10 +1056,10 @@ async def upload_image(
         raise HTTPException(status_code=500, detail="no_public_url")
 
     # --- insert DB
+        # --- insert DB (version simplifiée pour schéma RATP)
     ins = text("""
         INSERT INTO attachments (
-            kind, geom, user_id, url, idempotency_key, created_at,
-            is_sensitive, uploader_id
+            kind, geom, user_id, url, idempotency_key, created_at
         )
         VALUES (
             :k,
@@ -1074,9 +1067,7 @@ async def upload_image(
             :uid,
             :url,
             :idem,
-            NOW(),
-            TRUE,
-            :uploader
+            NOW()
         )
         RETURNING id
     """)
@@ -1089,7 +1080,6 @@ async def upload_image(
             "uid": str(user_id) if user_id else None,
             "url": url_public,
             "idem": idem,
-            "uploader": str(user_id) if user_id else None,
         },
     )
     new_id = rs.scalar() if hasattr(rs, "scalar") else (rs.first().id if rs.first() else None)
@@ -1098,9 +1088,10 @@ async def upload_image(
     return {
         "ok": True,
         "id": str(new_id) if new_id else None,
-        "url": url_public if is_admin else None,  # L’URL n’est renvoyée qu’à l’admin
+        "url": url_public if is_admin else None,
         "idempotency_key": idem,
     }
+
 
 
 
