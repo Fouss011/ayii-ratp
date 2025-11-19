@@ -123,10 +123,14 @@ async def insert_report(
         res = await db.execute(insert_sql, {
             "kind": kind, "signal": signal, "lat": lat, "lng": lng,
             "accuracy_m": accuracy_m, "note": note, "photo_url": photo_url,
-            "user_id": user_id
+            "user_id": user_id,
         })
-        report_id = res.scalar_one()
+        # ⚠️ Cast en string immédiatement pour éviter les UUID non sérialisables
+        report_id = str(res.scalar_one())
         await db.commit()
+        if LOG_AGG:
+            print(f"[report] inserted id={report_id} kind={kind} signal={signal} lat={lat} lng={lng}")
+
         if LOG_AGG:
             print(f"[report] inserted id={report_id} kind={kind} signal={signal} lat={lat} lng={lng}")
     except Exception:
