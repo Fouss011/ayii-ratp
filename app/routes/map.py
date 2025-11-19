@@ -182,7 +182,7 @@ async def upload_video(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Upload d'une vidéo pour un incident RATP.
+    Upload d'une vidéo pour un incident de propreté RATP.
     - vérifie que l'utilisateur est bien l'auteur (sauf admin)
     - stocke sur Supabase (ou fallback disque)
     - insère dans attachments
@@ -191,9 +191,11 @@ async def upload_video(
     from sqlalchemy import text
     from app.config import BASE_PUBLIC_URL, STATIC_DIR, STATIC_URL_PATH
 
-    # ✅ normaliser et vérifier le kind
+    # ✅ normalisation du kind (TRÈS IMPORTANT)
     K = (kind or "").strip().lower()
-    if K not in ALLOWED_KINDS:
+    # pour la version propreté RATP, on accepte les 6 types suivants :
+    allowed_kinds = {"urine", "vomit", "feces", "blood", "syringe", "broken_glass"}
+    if K not in allowed_kinds:
         raise HTTPException(status_code=400, detail="invalid kind")
 
     # admin ?
@@ -210,7 +212,7 @@ async def upload_video(
     if not data:
         raise HTTPException(status_code=400, detail="empty file")
 
-    # ✅ limite à ~15 MB
+    # ✅ limite à 15 MB
     if len(data) > 15 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="video too large (max ~15MB)")
 
@@ -295,6 +297,7 @@ async def upload_video(
                 raise RuntimeError(f"supabase upload failed [{r.status_code}]: {r.text}")
             url_public = f"{supa_url}/storage/v1/object/public/{bucket}/{path}"
         else:
+            # fallback disque
             raise RuntimeError("supabase credentials missing")
     except Exception:
         # fallback disque
