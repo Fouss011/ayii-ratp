@@ -219,7 +219,6 @@ app.include_router(cta_router)
 
 
 from app.routes.help import router as help_router
-...
 app.include_router(help_router)
 
 

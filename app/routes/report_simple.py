@@ -5,7 +5,7 @@ import json
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text  # pour journaliser l'événement "created"
-
+from app.crud import insert_report
 # === Import get_db, tolérant ===
 try:
     from app.dependencies import get_db
@@ -15,20 +15,6 @@ except Exception:
     except Exception as e:
         raise RuntimeError("Impossible d'importer get_db (ni app.dependencies.get_db, ni app.db.get_db).") from e
 
-
-# Cherche insert_report dans les modules probables
-_insert_report = None
-for path in ("app.services.reports", "app.core.reports", "app.db.reports", "app.reports"):
-    try:
-        module = __import__(path, fromlist=["insert_report"])
-        _insert_report = getattr(module, "insert_report", None)
-        if _insert_report:
-            break
-    except Exception:
-        pass
-if _insert_report is None:
-    raise RuntimeError("Impossible d'importer insert_report. Corrige l'import ci-dessus.")
-insert_report = _insert_report
 
 # Hook d'intégrité (signature HMAC) après insertion
 from app.services.report_hooks import enrich_and_sign_report
