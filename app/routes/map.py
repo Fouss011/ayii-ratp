@@ -315,7 +315,7 @@ async def upload_video(
     if not url_public:
         raise HTTPException(status_code=500, detail="no_public_url")
 
-    # insérer dans attachments
+        # insérer dans attachments
     ins = text("""
         INSERT INTO attachments (
             kind, geom, user_id, url, idempotency_key, created_at, is_sensitive, uploader_id
@@ -332,24 +332,30 @@ async def upload_video(
         )
         RETURNING id
     """)
-    rs = await db.execute(
-        ins,
-        {
-            "k": K,
-            "lng": float(lng),
-            "lat": float(lat),
-            "uid": str(user_id) if user_id else None,
-            "url": url_public,
-            "idem": idem,
-            "uploader": str(user_id) if user_id else None,
-        },
-    )
-    row = rs.first()
-    await db.commit()
+
+    try:
+        rs = await db.execute(
+            ins,
+            {
+                "k": K,
+                "lng": float(lng),
+                "lat": float(lat),
+                "uid": str(user_id) if user_id else None,
+                "url": url_public,
+                "idem": idem,
+                "uploader": str(user_id) if user_id else None,
+            },
+        )
+        row = rs.first()
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        # 🔍 on renvoie l'erreur SQL pour qu'on la voie dans curl
+        raise HTTPException(status_code=500, detail=f"db_insert_error: {e}")
 
     return {
         "ok": True,
-        "id": str(row.id),
+        "id": str(row.id) if row and hasattr(row, "id") else None,
         "url": url_public,
         "idempotency_key": idem,
     }
