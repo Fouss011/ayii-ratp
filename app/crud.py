@@ -75,6 +75,9 @@ async def insert_report(
     note: Optional[str] = None,
     photo_url: Optional[str] = None,
     user_id: Optional[str] = None,
+    idempotency_key: Optional[str] = None,
+    device_id: Optional[str] = None,
+    **extra: Any,
 ) -> str:
     """
     Insère un report et déclenche les actions auto indispensables :
