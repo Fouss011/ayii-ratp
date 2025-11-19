@@ -17,6 +17,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from app.config import STATIC_DIR, STATIC_URL_PATH
 from app.db import get_db
 from app.services.aggregation import run_aggregation
+from app.routes import report_simple 
 
 # -----------------------------------------------------------------------------
 # Chargement .env en local (pas sur Render/Prod)
@@ -190,6 +191,7 @@ async def no_store_cache(request: Request, call_next):
 # -----------------------------------------------------------------------------
 from app.routes.map import router as map_router         # noqa: E402
 app.include_router(map_router)
+app.include_router(report_simple.router)
 
 # Route de report (si séparée)
 # try:
