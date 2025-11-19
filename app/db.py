@@ -1,24 +1,53 @@
-# app/db.py
+from __future__ import annotations
+
 import os
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+import re
+from typing import AsyncGenerator
 
-DATABASE_URL = os.getenv("DATABASE_URL")  # ex: postgresql+psycopg://...:6543/postgres
-
-# 👉 paramètres anti-stale + petit pool (pgBouncer)
-engine = create_async_engine(
-    DATABASE_URL,
-    pool_size=5,              # petit, stable
-    max_overflow=2,           # limiter les pics
-    pool_recycle=300,         # recycle connexions >5 min
-    pool_pre_ping=True,       # teste la connexion avant usage
-    connect_args={
-        # côté psycopg3, rien d’exotique nécessaire avec pgBouncer
-        # on garde vide; si tu as un CA, tu peux ajouter: "sslmode":"require"
-    },
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
 )
 
-SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+# -------------------------------------------------------------------
+# DATABASE_URL : on nettoie sslmode pour asyncpg
+# -------------------------------------------------------------------
+RAW_DATABASE_URL = os.getenv("DATABASE_URL", "")
 
-async def get_db():
-    async with SessionLocal() as session:
-        yield session
+# Si l'URL contient ?sslmode=require ou &sslmode=require → on le supprime
+if RAW_DATABASE_URL and "sslmode=" in RAW_DATABASE_URL:
+    # supprime le paramètre sslmode dans la query
+    DATABASE_URL = re.sub(r"[?&]sslmode=[^&]+", "", RAW_DATABASE_URL)
+else:
+    DATABASE_URL = RAW_DATABASE_URL
+
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL not set")
+
+# -------------------------------------------------------------------
+# Engine async SQLAlchemy (sans connect_args, compatible asyncpg)
+# -------------------------------------------------------------------
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+    future=True,
+)
+
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
+    expire_on_commit=False,
+    class_=AsyncSession,
+)
+
+
+# -------------------------------------------------------------------
+# Dependency FastAPI
+# -------------------------------------------------------------------
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
