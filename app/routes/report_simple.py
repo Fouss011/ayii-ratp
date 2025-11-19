@@ -149,7 +149,13 @@ async def create_report(payload: Any = Body(...), db: AsyncSession = Depends(get
         )
         await db.commit()
 
-        return {"ok": True, "id": rid, "idempotency_key": getattr(data, "idempotency_key", None)}
+        return {
+            "ok": True,
+            "id": str(rid),  # ← important: UUID -> str
+            "idempotency_key": getattr(data, "idempotency_key", None),
+        }
+
+    
     except HTTPException:
         raise
     except Exception as e:
