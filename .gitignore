@@ -1,6 +1,22 @@
-__pycache__
-*.pyc
-.venv/
-.env
-app/.env
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.sqlite3
+
+# Environnement virtuel
+venv/
+.env/
+.env.local
+*.env
+
+# VS Code
+.vscode/
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log
