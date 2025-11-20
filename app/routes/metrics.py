@@ -110,13 +110,28 @@ async def metrics_kind_breakdown(
     days: int = Query(30, ge=1, le=365),
 ):
     """
-    Répartition par kind (pie)
+    Répartition par type sur X jours (par défaut 30).
+    ➜ Inclut tous les kind présents dans la table `reports`
+       (y compris blood, urine, vomit, excreta, syringe, broken_glass…)
+       mais on se limite aux signaux utiles : 'cut' + 'to_clean'.
     """
     q = text("""
-        SELECT kind::text AS kind, COUNT(*)::int AS n
-          FROM reports
-         WHERE created_at >= NOW() - (:d || ' days')::interval
-         GROUP BY 1 ORDER BY 2 DESC
+        SELECT
+          kind::text AS kind,
+          COUNT(*)::int AS n
+        FROM reports
+        WHERE created_at >= NOW() - (:d || ' days')::interval
+          AND signal::text IN ('cut', 'to_clean')
+        GROUP BY kind::text
+        ORDER BY n DESC
     """)
+
     rows = (await db.execute(q, {"d": days})).mappings().all()
-    return {"days": days, "items": rows}
+
+    items = [
+        {"kind": r["kind"], "n": int(r["n"])}
+        for r in rows
+    ]
+
+    return {"days": days, "items": items}
+

@@ -59,22 +59,43 @@ async def dashboard_page():
     const $$ = (s,el=document)=>Array.from(el.querySelectorAll(s));
 
     // Libellés + icônes
+        // Libellés + icônes
     function labelKind(k){
-      return k==='traffic'?'embouteillage':
-             k==='accident'?'accident':
-             k==='fire'?'incendie':
-             k==='flood'?'inondation':
-             k==='power'?'électricité':
-             k==='water'?'eau':(k||'—');
+      k = (k || '').toLowerCase();
+      return k === 'traffic' ? 'embouteillage' :
+             k === 'accident' ? 'accident' :
+             k === 'fire' ? 'incendie' :
+             k === 'flood' ? 'inondation' :
+             k === 'power' ? 'électricité' :
+             k === 'water' ? 'eau' :
+             // 🔹 Types RATP propreté
+             k === 'blood' ? 'sang' :
+             k === 'urine' ? 'urine' :
+             k === 'vomit' ? 'vomi' :
+             k === 'excreta' ? 'excréments' :
+             k === 'syringe' ? 'seringue' :
+             k === 'broken_glass' ? 'verre / bouteille cassée' :
+             (k || '—');
     }
+
     function iconKind(k){
-      return k==='traffic'?'🚗':
-             k==='accident'?'💥':
-             k==='fire'?'🔥':
-             k==='flood'?'🌊':
-             k==='power'?'⚡':
-             k==='water'?'💧':'•';
+      k = (k || '').toLowerCase();
+      return k === 'traffic' ? '🚗' :
+             k === 'accident' ? '💥' :
+             k === 'fire' ? '🔥' :
+             k === 'flood' ? '🌊' :
+             k === 'power' ? '⚡' :
+             k === 'water' ? '💧' :
+             // 🔹 Icônes RATP
+             k === 'blood' ? '🩸' :
+             k === 'urine' ? '💧' :
+             k === 'vomit' ? '🤢' :
+             k === 'excreta' ? '💩' :
+             k === 'syringe' ? '💉' :
+             k === 'broken_glass' ? '🧩' :
+             '•';
     }
+
 
     // Gravité (front-only)
     function severityScore(x){

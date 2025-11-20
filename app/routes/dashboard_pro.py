@@ -161,20 +161,42 @@ async def dashboard_pro():
   }
 
   // Pie kind
-  let pieKind;
+    let pieKind;
   async function loadPieKind(){
     try{
-      const j=await getJSON(api("/metrics/kind_breakdown?days=30"));
-      const labels=j.items.map(r=>r.kind);
-      const data=j.items.map(r=>r.n);
-      if(pieKind) pieKind.destroy();
-      pieKind=new Chart($("#pieKind").getContext("2d"),{
-        type:"doughnut",
-        data:{ labels, datasets:[{ data }] },
-        options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:"bottom" } } }
+      const j = await getJSON(api("/metrics/kind_breakdown?days=30"));
+      const raw = j.items || [];
+
+      // 🔹 Types propreté RATP que l’on veut mettre en avant
+      const RATP_KINDS = ["blood", "urine", "vomit", "excreta", "syringe", "broken_glass"];
+
+      // On filtre d'abord sur ces types
+      let filtered = raw.filter(r => RATP_KINDS.includes(String(r.kind || "").toLowerCase()));
+
+      // ⚠️ Si jamais il n'y a encore aucun signalement RATP
+      // (ex : environnement de test), on retombe sur tous les types.
+      if (filtered.length === 0) {
+        filtered = raw;
+      }
+
+      const labels = filtered.map(r => r.kind);
+      const data   = filtered.map(r => r.n);
+
+      if (pieKind) pieKind.destroy();
+      pieKind = new Chart($("#pieKind").getContext("2d"), {
+        type: "doughnut",
+        data: { labels, datasets: [{ data }] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: "bottom" } }
+        }
       });
-    }catch(e){ console.error(e); }
+    } catch(e) {
+      console.error(e);
+    }
   }
+
 
   // Gravité
   function severityScore(x){

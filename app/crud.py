@@ -64,6 +64,8 @@ INCIDENT_KINDS  = {"traffic", "accident", "fire", "flood"}
 # -----------------------------------------------------------------------------
 # INSERT Report (+ actions automatiques)
 # -----------------------------------------------------------------------------
+# app/crud.py
+
 async def insert_report(
     db: AsyncSession,
     *,
@@ -75,22 +77,39 @@ async def insert_report(
     note: Optional[str] = None,
     photo_url: Optional[str] = None,
     user_id: Optional[str] = None,
-    idempotency_key: Optional[str] = None,
-    device_id: Optional[str] = None,
-    **extra: Any,
+
+    # 🔹 Contexte transport RATP (MVP propreté)
+    mode: Optional[str] = None,
+    line_code: Optional[str] = None,
+    direction: Optional[str] = None,
+    current_stop: Optional[str] = None,
+    next_stop: Optional[str] = None,
+    final_stop: Optional[str] = None,
+    train_state: Optional[str] = None,
+
+    # 🔹 On ignore pour l’instant idempotency_key/device_id (gérés ailleurs si besoin)
+    **_extra: Any,
 ) -> str:
     """
     Insère un report et déclenche les actions auto indispensables :
+
       - power/water + restored -> ferme la zone la plus proche (si dans le cône)
       - traffic/accident/fire/flood + cut -> upsert incident (fusion à 300 m)
       - traffic/accident/fire/flood + restored -> clear incident le plus proche (≤ 800 m)
+
+    Pour les nouveaux types RATP (blood, urine, vomit, excreta, syringe, broken_glass),
+    il n'y a PAS de création d'« incident » automatique : on reste au niveau report.
     """
 
     # 0) S’assurer que la FK user existe si user_id fourni
     if user_id:
         try:
             await db.execute(
-                text("INSERT INTO app_users (id) VALUES (CAST(:uid AS uuid)) ON CONFLICT (id) DO NOTHING"),
+                text(
+                    "INSERT INTO app_users (id) "
+                    "VALUES (CAST(:uid AS uuid)) "
+                    "ON CONFLICT (id) DO NOTHING"
+                ),
                 {"uid": user_id},
             )
             await db.commit()
@@ -106,38 +125,77 @@ async def insert_report(
     kind_cast = kind_typ if kind_is_enum else "text"
     sig_cast  = sig_typ  if sig_is_enum  else "text"
 
-    # 2) Insert
+    # 2) Insert : on ajoute les colonnes de contexte transport
     insert_sql = text(f"""
-        INSERT INTO reports (kind, signal, geom, accuracy_m, note, photo_url, user_id)
+        INSERT INTO reports (
+            kind,
+            signal,
+            geom,
+            accuracy_m,
+            note,
+            photo_url,
+            user_id,
+            mode,
+            line_code,
+            direction,
+            current_stop,
+            next_stop,
+            final_stop,
+            train_state
+        )
         VALUES (
             CAST(:kind AS {kind_cast}),
             CAST(:signal AS {sig_cast}),
             ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
-            :accuracy_m, :note, :photo_url,
-            CAST(:user_id AS uuid)
+            :accuracy_m,
+            :note,
+            :photo_url,
+            CAST(:user_id AS uuid),
+            :mode,
+            :line_code,
+            :direction,
+            :current_stop,
+            :next_stop,
+            :final_stop,
+            :train_state
         )
         RETURNING id
     """).bindparams(bindparam("user_id", type_=UUID(as_uuid=False)))
 
     try:
-        res = await db.execute(insert_sql, {
-            "kind": kind, "signal": signal, "lat": lat, "lng": lng,
-            "accuracy_m": accuracy_m, "note": note, "photo_url": photo_url,
-            "user_id": user_id,
-        })
-        # ⚠️ Cast en string immédiatement pour éviter les UUID non sérialisables
-        report_id = str(res.scalar_one())
+        res = await db.execute(
+            insert_sql,
+            {
+                "kind": kind,
+                "signal": signal,
+                "lat": lat,
+                "lng": lng,
+                "accuracy_m": accuracy_m,
+                "note": note,
+                "photo_url": photo_url,
+                "user_id": user_id,
+                "mode": mode,
+                "line_code": line_code,
+                "direction": direction,
+                "current_stop": current_stop,
+                "next_stop": next_stop,
+                "final_stop": final_stop,
+                "train_state": train_state,
+            },
+        )
+        report_id = res.scalar_one()
         await db.commit()
         if LOG_AGG:
-            print(f"[report] inserted id={report_id} kind={kind} signal={signal} lat={lat} lng={lng}")
-
-        if LOG_AGG:
-            print(f"[report] inserted id={report_id} kind={kind} signal={signal} lat={lat} lng={lng}")
+            print(
+                f"[report] inserted id={report_id} "
+                f"kind={kind} signal={signal} lat={lat} lng={lng} "
+                f"mode={mode} line={line_code} dir={direction}"
+            )
     except Exception:
         await db.rollback()
         raise
 
-    # 3) Actions auto
+    # 3) Actions auto pour les anciens types (Ayii classique)
     try:
         if signal == "restored" and kind in KINDS_OUTAGE:
             closed = await close_nearest_outage_on_restored(db, kind, lat, lng)
