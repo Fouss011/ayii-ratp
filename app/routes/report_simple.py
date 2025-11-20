@@ -115,7 +115,7 @@ async def create_report(payload: Any = Body(...), db: AsyncSession = Depends(get
             lng=float(getattr(data, "lng")),
             accuracy_m=int(getattr(data, "accuracy_m", 0)) if getattr(data, "accuracy_m", None) is not None else None,
 
-            # 🔹 Nouveaux champs transport
+            # 🔹 Contexte transport
             mode=getattr(data, "mode", None),
             line_code=getattr(data, "line_code", None),
             direction=getattr(data, "direction", None),
@@ -131,9 +131,12 @@ async def create_report(payload: Any = Body(...), db: AsyncSession = Depends(get
             device_id=getattr(data, "device_id", None),
         )
 
+        # 🔒 on force en string pour JSON + SQL
+        rid_str = str(rid)
+
         # 4b) Signature HMAC (intégrité)
         await enrich_and_sign_report(
-            db, rid,
+            db, rid_str,
             kind=kind, signal=signal,
             lat=float(getattr(data, "lat")), lng=float(getattr(data, "lng")),
             device_id=getattr(data, "device_id", None),
@@ -145,15 +148,16 @@ async def create_report(payload: Any = Body(...), db: AsyncSession = Depends(get
         # 4c) Journaliser l'événement "created"
         await db.execute(
             text("INSERT INTO report_events (report_id, event) VALUES (CAST(:rid AS uuid), 'created')"),
-            {"rid": rid},
+            {"rid": rid_str},
         )
         await db.commit()
 
         return {
             "ok": True,
-            "id": str(rid),  # ← important: UUID -> str
+            "id": rid_str,
             "idempotency_key": getattr(data, "idempotency_key", None),
         }
+
 
     
     except HTTPException:
