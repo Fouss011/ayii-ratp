@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
@@ -60,7 +60,8 @@ async def metrics_summary(
     - breakdown par kind (tous kinds présents dans la table)
     """
 
-    params: Dict[str, Any] = {"h": hours}
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    params: Dict[str, Any] = {"cutoff": cutoff}
 
     # Total & par status
     q_tot = text("""
@@ -70,7 +71,7 @@ async def metrics_summary(
           COUNT(*) FILTER (WHERE status = 'confirmed')::int                 AS n_confirmed,
           COUNT(*) FILTER (WHERE status = 'resolved')::int                  AS n_resolved
         FROM reports
-        WHERE created_at > NOW() - ((:h::text || ' hours')::interval)
+        WHERE created_at > :cutoff
     """)
     res_tot = await db.execute(q_tot, params)
     tot = res_tot.mappings().first() or {
@@ -84,7 +85,7 @@ async def metrics_summary(
     q_kind = text("""
         SELECT kind::text AS kind, COUNT(*)::int AS n
           FROM reports
-         WHERE created_at > NOW() - ((:h::text || ' hours')::interval)
+         WHERE created_at > :cutoff
          GROUP BY 1
          ORDER BY 2 DESC
     """)
@@ -115,8 +116,10 @@ async def metrics_incidents_by_day(
     Spécifique RATP propreté : on ne regarde que signal = 'to_clean'.
     """
 
-    where = ["LOWER(TRIM(signal::text)) = 'to_clean'"]
-    params: Dict[str, Any] = {"d": days}
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    params: Dict[str, Any] = {"cutoff": cutoff}
+
+    where = ["LOWER(TRIM(signal::text)) = 'to_clean'", "created_at >= :cutoff"]
 
     if kind:
         where.append("LOWER(kind::text) = LOWER(:k)")
@@ -128,7 +131,6 @@ async def metrics_incidents_by_day(
           COUNT(*)::int AS n
         FROM reports
         WHERE {" AND ".join(where)}
-          AND created_at >= NOW() - ((:d::text || ' days')::interval)
         GROUP BY 1
         ORDER BY 1
     """)
@@ -154,15 +156,17 @@ async def metrics_kind_breakdown(
     Même si la table contient encore d'anciens 'traffic', 'accident', etc.
     """
 
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
     q = text("""
         SELECT kind::text AS kind, COUNT(*)::int AS n
           FROM reports
-         WHERE created_at >= NOW() - ((:d::text || ' days')::interval)
+         WHERE created_at >= :cutoff
          GROUP BY 1
          ORDER BY 2 DESC
     """)
 
-    rows_raw = (await db.execute(q, {"d": days})).mappings().all()
+    rows_raw = (await db.execute(q, {"cutoff": cutoff})).mappings().all()
 
     items = []
     for r in rows_raw:
