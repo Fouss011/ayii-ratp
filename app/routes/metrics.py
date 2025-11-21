@@ -33,46 +33,44 @@ async def metrics_summary(
     hours: int = Query(24, ge=1, le=720),
 ):
     """
-    Vue d'ensemble (last X hours) :
+    Vue d'ensemble (last X hours) RATP :
     - nb reports total
     - nb par kind
-    - nb par status (new|confirmed|resolved)
-    - temps moyen jusqu'au 'resolved' (si dispo)
+    - nb par status (si tu ajoutes un statut plus tard sur une table dédiée)
     """
     params = {"h": hours}
 
-    # total & par status
+    # ⚠️ Table reports n'a pas forcément 'status' -> on reste simple : total seulement
     q_tot = text("""
-        SELECT COUNT(*)::int AS n_total,
-               COUNT(*) FILTER (WHERE COALESCE(status,'new')='new')::int AS n_new,
-               COUNT(*) FILTER (WHERE status='confirmed')::int AS n_confirmed,
-               COUNT(*) FILTER (WHERE status='resolved')::int AS n_resolved
+        SELECT COUNT(*)::int AS n_total
           FROM reports
          WHERE created_at > NOW() - (:h || ' hours')::interval
     """)
     res_tot = await db.execute(q_tot, params)
-    tot = res_tot.mappings().first() or {"n_total":0,"n_new":0,"n_confirmed":0,"n_resolved":0}
+    row_tot = res_tot.mappings().first() or {"n_total": 0}
+    total = int(row_tot["n_total"])
 
-    # par kind
+    # par kind (tous, on filtrera RATP plus bas)
     q_kind = text("""
         SELECT kind::text AS kind, COUNT(*)::int AS n
           FROM reports
          WHERE created_at > NOW() - (:h || ' hours')::interval
          GROUP BY 1 ORDER BY 2 DESC
     """)
-    rows_kind = (await db.execute(q_kind, params)).mappings().all()
+    rows_kind_raw = (await db.execute(q_kind, params)).mappings().all()
+    rows_kind = [dict(r) for r in rows_kind_raw]
 
-    # temps moyen jusqu'à 'resolved' (approx: on prend le dernier report resolved par (kind, zone ~200m))
-    # -> version simple: durée entre premier 'cut' et DERNIER 'resolved' par (same kind, 200m, 24h)
-    # Ici on donne une valeur indicative = non calculée finement (optionnel)
-    avg_min = None
+    # 🔹 Garde uniquement les types RATP
+    RATP_KINDS = {"blood", "urine", "vomit", "excrement", "syringe", "glass"}
+    rows_kind = [r for r in rows_kind if (r.get("kind") in RATP_KINDS)]
 
     return {
         "window_h": hours,
-        "total": dict(tot),
+        "total": {
+            "n_total": total,
+        },
         "by_kind": rows_kind,
-        "avg_to_resolved_min": avg_min,
-        "server_now": datetime.now(timezone.utc).isoformat().replace("+00:00","Z"),
+        "server_now": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
 
 
@@ -84,22 +82,47 @@ async def metrics_incidents_by_day(
     kind: Optional[str] = Query(None),
 ):
     """
-    Série temporelle: nombre de reports 'cut' par jour (option: filtrer par kind)
+    Série temporelle: nombre de reports par jour (RATP).
+    On ne filtre plus sur 'cut', on compte tous les reports du type voulu.
     """
-    where = ["LOWER(TRIM(signal::text))='cut'"]
+    where = ["created_at >= NOW() - (:d || ' days')::interval"]
     params: Dict[str, Any] = {"d": days}
+
+    # 🔹 Types RATP uniquement
+    RATP_KINDS = {"blood", "urine", "vomit", "excrement", "syringe", "glass"}
+
     if kind:
-        where.append("kind = :k")
+        # si un kind est demandé, on le force à être RATP
+        kind = kind.strip().lower()
+        if kind not in RATP_KINDS:
+            # pas de données pour ce type
+            return {"days": days, "kind": kind, "series": []}
+        where.append("LOWER(kind::text) = :k")
         params["k"] = kind
+    else:
+        # sinon, on limite aux kinds RATP
+        ratp_list = ", ".join(f"'{k}'" for k in RATP_KINDS)
+        where.append(f"kind::text IN ({ratp_list})")
 
     q = text(f"""
         SELECT date_trunc('day', created_at)::date AS day, COUNT(*)::int AS n
           FROM reports
          WHERE {" AND ".join(where)}
-           AND created_at >= NOW() - (:d || ' days')::interval
          GROUP BY 1 ORDER BY 1
     """)
-    rows = (await db.execute(q, params)).mappings().all()
+    rows_raw = (await db.execute(q, params)).mappings().all()
+    rows = [dict(r) for r in rows_raw]
+
+    # normalisation date -> string
+    for r in rows:
+        d = r.get("day")
+        if isinstance(d, datetime):
+            r["day"] = d.date().isoformat()
+        elif hasattr(d, "isoformat"):
+            r["day"] = d.isoformat()
+        else:
+            r["day"] = str(d)
+
     return {"days": days, "kind": kind, "series": rows}
 
 
@@ -110,28 +133,21 @@ async def metrics_kind_breakdown(
     days: int = Query(30, ge=1, le=365),
 ):
     """
-    Répartition par type sur X jours (par défaut 30).
-    ➜ Inclut tous les kind présents dans la table `reports`
-       (y compris blood, urine, vomit, excreta, syringe, broken_glass…)
-       mais on se limite aux signaux utiles : 'cut' + 'to_clean'.
+    Répartition par kind (RATP uniquement, pie chart).
     """
     q = text("""
-        SELECT
-          kind::text AS kind,
-          COUNT(*)::int AS n
-        FROM reports
-        WHERE created_at >= NOW() - (:d || ' days')::interval
-          AND signal::text IN ('cut', 'to_clean')
-        GROUP BY kind::text
-        ORDER BY n DESC
+        SELECT kind::text AS kind, COUNT(*)::int AS n
+          FROM reports
+         WHERE created_at >= NOW() - (:d || ' days')::interval
+         GROUP BY 1 ORDER BY 2 DESC
     """)
+    rows_raw = (await db.execute(q, {"d": days})).mappings().all()
+    rows = [dict(r) for r in rows_raw]
 
-    rows = (await db.execute(q, {"d": days})).mappings().all()
+    # 🔹 Ne garder QUE les types RATP
+    RATP_KINDS = {"blood", "urine", "vomit", "excrement", "syringe", "glass"}
+    rows = [r for r in rows if (r.get("kind") in RATP_KINDS)]
 
-    items = [
-        {"kind": r["kind"], "n": int(r["n"])}
-        for r in rows
-    ]
+    return {"days": days, "items": rows}
 
-    return {"days": days, "items": items}
 
