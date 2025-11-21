@@ -1,8 +1,9 @@
 # app/routes/metrics.py
 from __future__ import annotations
+
 import os
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,10 +13,10 @@ from app.db import get_db
 
 router = APIRouter(prefix="/metrics", tags=["Metrics"])
 
-# --- Kinds RATP uniquement ---
-RATP_KINDS = {"blood", "urine", "vomit", "excrement", "syringe", "glass"}
+# ---------------------------------------------------------------------------
+# Admin token (x-admin-token)
+# ---------------------------------------------------------------------------
 
-# --- auth admin simple (x-admin-token) ---
 def _admin_token() -> str:
     return (os.getenv("ADMIN_TOKEN") or os.getenv("NEXT_PUBLIC_ADMIN_TOKEN") or "").strip()
 
@@ -29,6 +30,23 @@ async def require_admin(request: Request) -> bool:
     return True
 
 
+# ---------------------------------------------------------------------------
+# Types RATP (propreté)
+# ---------------------------------------------------------------------------
+
+RATP_KINDS = {
+    "blood",       # sang
+    "urine",
+    "vomit",       # vomi
+    "excrement",   # excréments
+    "syringe",     # seringue
+    "glass",       # verre / bouteille cassée
+}
+
+# ---------------------------------------------------------------------------
+# /metrics/summary
+# ---------------------------------------------------------------------------
+
 @router.get("/summary")
 async def metrics_summary(
     ok: bool = Depends(require_admin),
@@ -36,49 +54,54 @@ async def metrics_summary(
     hours: int = Query(24, ge=1, le=720),
 ):
     """
-    Vue d'ensemble (last X hours) RATP :
-    - nb reports total
-    - nb par kind (RATP only)
+    Vue d'ensemble (last X hours) :
+    - nb total de reports
+    - nb par status (new / confirmed / resolved)
+    - breakdown par kind (tous kinds présents dans la table)
     """
 
-    try:
-        params = {"h": hours}
+    params: Dict[str, Any] = {"h": hours}
 
-        # total (tous reports confondus)
-        q_tot = text("""
-            SELECT COUNT(*)::int AS n_total
-              FROM reports
-             WHERE created_at > NOW() - (:h || ' hours')::interval
-        """)
-        res_tot = await db.execute(q_tot, params)
-        row_tot = res_tot.mappings().first() or {"n_total": 0}
-        total = int(row_tot["n_total"])
+    # Total & par status
+    q_tot = text("""
+        SELECT
+          COUNT(*)::int AS n_total,
+          COUNT(*) FILTER (WHERE COALESCE(status,'new') = 'new')::int       AS n_new,
+          COUNT(*) FILTER (WHERE status = 'confirmed')::int                 AS n_confirmed,
+          COUNT(*) FILTER (WHERE status = 'resolved')::int                  AS n_resolved
+        FROM reports
+        WHERE created_at > NOW() - ((:h::text || ' hours')::interval)
+    """)
+    res_tot = await db.execute(q_tot, params)
+    tot = res_tot.mappings().first() or {
+        "n_total": 0,
+        "n_new": 0,
+        "n_confirmed": 0,
+        "n_resolved": 0,
+    }
 
-        # par kind (on filtrera RATP après)
-        q_kind = text("""
-            SELECT kind::text AS kind, COUNT(*)::int AS n
-              FROM reports
-             WHERE created_at > NOW() - (:h || ' hours')::interval
-             GROUP BY 1 ORDER BY 2 DESC
-        """)
-        rows_kind_raw = (await db.execute(q_kind, params)).mappings().all()
-        rows_kind: List[Dict[str, Any]] = [dict(r) for r in rows_kind_raw]
+    # Breakdown par kind (tous kinds, pour debug général)
+    q_kind = text("""
+        SELECT kind::text AS kind, COUNT(*)::int AS n
+          FROM reports
+         WHERE created_at > NOW() - ((:h::text || ' hours')::interval)
+         GROUP BY 1
+         ORDER BY 2 DESC
+    """)
+    rows_kind = (await db.execute(q_kind, params)).mappings().all()
 
-        # 🔹 Garde uniquement les types RATP
-        rows_kind = [r for r in rows_kind if (r.get("kind") in RATP_KINDS)]
+    return {
+        "window_h": hours,
+        "total": dict(tot),
+        "by_kind": rows_kind,
+        "avg_to_resolved_min": None,
+        "server_now": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
 
-        return {
-            "window_h": hours,
-            "total": {
-                "n_total": total,
-            },
-            "by_kind": rows_kind,
-            "server_now": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        }
-    except Exception as e:
-        print(f"[metrics_summary] error: {e}")
-        raise HTTPException(status_code=500, detail=f"metrics_summary error: {e}")
 
+# ---------------------------------------------------------------------------
+# /metrics/incidents_by_day
+# ---------------------------------------------------------------------------
 
 @router.get("/incidents_by_day")
 async def metrics_incidents_by_day(
@@ -88,50 +111,35 @@ async def metrics_incidents_by_day(
     kind: Optional[str] = Query(None),
 ):
     """
-    Série temporelle: nombre de reports par jour (RATP only).
-    On ne filtre plus sur 'cut' (propreté) : on compte tous les reports du kind.
+    Série temporelle : nombre de reports 'to_clean' par jour (option : filtrer par kind).
+    Spécifique RATP propreté : on ne regarde que signal = 'to_clean'.
     """
 
-    try:
-        where = ["created_at >= NOW() - (:d || ' days')::interval"]
-        params: Dict[str, Any] = {"d": days}
+    where = ["LOWER(TRIM(signal::text)) = 'to_clean'"]
+    params: Dict[str, Any] = {"d": days}
 
-        if kind:
-            k = kind.strip().lower()
-            if k not in RATP_KINDS:
-                # Pas de données pour ce type
-                return {"days": days, "kind": k, "series": []}
-            where.append("LOWER(kind::text) = :k")
-            params["k"] = k
-        else:
-            # uniquement les kinds RATP
-            ratp_list = ", ".join(f"'{k}'" for k in RATP_KINDS)
-            where.append(f"kind::text IN ({ratp_list})")
+    if kind:
+        where.append("LOWER(kind::text) = LOWER(:k)")
+        params["k"] = kind
 
-        q = text(f"""
-            SELECT date_trunc('day', created_at)::date AS day, COUNT(*)::int AS n
-              FROM reports
-             WHERE {" AND ".join(where)}
-             GROUP BY 1 ORDER BY 1
-        """)
-        rows_raw = (await db.execute(q, params)).mappings().all()
-        rows: List[Dict[str, Any]] = [dict(r) for r in rows_raw]
+    q = text(f"""
+        SELECT
+          date_trunc('day', created_at)::date AS day,
+          COUNT(*)::int AS n
+        FROM reports
+        WHERE {" AND ".join(where)}
+          AND created_at >= NOW() - ((:d::text || ' days')::interval)
+        GROUP BY 1
+        ORDER BY 1
+    """)
 
-        # normalisation date -> string
-        for r in rows:
-            d = r.get("day")
-            if isinstance(d, datetime):
-                r["day"] = d.date().isoformat()
-            elif hasattr(d, "isoformat"):
-                r["day"] = d.isoformat()
-            else:
-                r["day"] = str(d)
+    rows = (await db.execute(q, params)).mappings().all()
+    return {"days": days, "kind": kind, "series": rows}
 
-        return {"days": days, "kind": kind, "series": rows}
-    except Exception as e:
-        print(f"[metrics_incidents_by_day] error: {e}")
-        raise HTTPException(status_code=500, detail=f"metrics_incidents_by_day error: {e}")
 
+# ---------------------------------------------------------------------------
+# /metrics/kind_breakdown
+# ---------------------------------------------------------------------------
 
 @router.get("/kind_breakdown")
 async def metrics_kind_breakdown(
@@ -140,23 +148,26 @@ async def metrics_kind_breakdown(
     days: int = Query(30, ge=1, le=365),
 ):
     """
-    Répartition par kind (pie RATP only).
+    Répartition par kind sur la fenêtre (par défaut 30 jours).
+    ⚠️ Ici on ne renvoie que les kinds RATP propreté :
+        blood, urine, vomit, excrement, syringe, glass
+    Même si la table contient encore d'anciens 'traffic', 'accident', etc.
     """
 
-    try:
-        q = text("""
-            SELECT kind::text AS kind, COUNT(*)::int AS n
-              FROM reports
-             WHERE created_at >= NOW() - (:d || ' days')::interval
-             GROUP BY 1 ORDER BY 2 DESC
-        """)
-        rows_raw = (await db.execute(q, {"d": days})).mappings().all()
-        rows: List[Dict[str, Any]] = [dict(r) for r in rows_raw]
+    q = text("""
+        SELECT kind::text AS kind, COUNT(*)::int AS n
+          FROM reports
+         WHERE created_at >= NOW() - ((:d::text || ' days')::interval)
+         GROUP BY 1
+         ORDER BY 2 DESC
+    """)
 
-        # 🔹 Ne garder QUE les types RATP
-        rows = [r for r in rows if (r.get("kind") in RATP_KINDS)]
+    rows_raw = (await db.execute(q, {"d": days})).mappings().all()
 
-        return {"days": days, "items": rows}
-    except Exception as e:
-        print(f"[metrics_kind_breakdown] error: {e}")
-        raise HTTPException(status_code=500, detail=f"metrics_kind_breakdown error: {e}")
+    items = []
+    for r in rows_raw:
+        k = (r["kind"] or "").lower()
+        if k in RATP_KINDS:
+            items.append({"kind": k, "n": r["n"]})
+
+    return {"days": days, "items": items}
