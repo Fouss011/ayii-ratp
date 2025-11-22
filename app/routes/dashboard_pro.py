@@ -13,7 +13,7 @@ async def dashboard_pro():
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>AYii – Dashboard CTA (Pro)</title>
+  <title>AYii – Dashboard CTA Propreté (Pro)</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
@@ -32,8 +32,8 @@ async def dashboard_pro():
   <div class="mx-auto p-6 space-y-6" style="max-width: 1400px;">
     <header class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
       <div>
-        <h1 class="text-2xl font-bold">AYii – Dashboard CTA (Pro)</h1>
-        <p class="text-gray-600">Métriques + Incidents (lecture seule)</p>
+        <h1 class="text-2xl font-bold">AYii – Dashboard CTA (Propreté RATP)</h1>
+        <p class="text-gray-600">Métriques & signalements – types propreté uniquement</p>
       </div>
       <div class="flex items-center gap-2">
         <input id="admintok" type="password" placeholder="x-admin-token" class="border px-3 py-2 rounded-lg w-80" />
@@ -58,12 +58,16 @@ async def dashboard_pro():
 
       <div class="card col-span-12 lg:col-span-8">
         <div class="flex items-center justify-between mb-4">
-          <h2 class="font-semibold">Série 30 jours (reports 'cut')</h2>
+          <h2 class="font-semibold">Série 30 jours (signalements à traiter)</h2>
           <div class="flex items-center gap-2">
             <select id="kindFilter" class="border px-2 py-1 rounded-lg">
               <option value="">Tous types</option>
-              <option>fire</option><option>accident</option><option>traffic</option>
-              <option>flood</option><option>power</option><option>water</option>
+              <option value="blood">Sang</option>
+              <option value="urine">Urine</option>
+              <option value="vomit">Vomi</option>
+              <option value="excrement">Excréments</option>
+              <option value="syringe">Seringue</option>
+              <option value="glass">Verre / bouteille cassée</option>
             </select>
             <button id="reloadTS" class="btn">Rafraîchir</button>
           </div>
@@ -80,7 +84,7 @@ async def dashboard_pro():
 
       <div class="card col-span-12 lg:col-span-8">
         <div class="flex items-center justify-between mb-4">
-          <h2 class="font-semibold">Incidents récents</h2>
+          <h2 class="font-semibold">Signalements récents (liste)</h2>
           <div class="flex gap-2">
             <select id="status" class="border px-2 py-1 rounded-lg">
               <option>new</option><option>confirmed</option><option>resolved</option>
@@ -92,7 +96,7 @@ async def dashboard_pro():
       </div>
     </section>
 
-    <footer class="text-center text-xs text-gray-500 pt-6">© AYii – CTA Dashboard</footer>
+    <footer class="text-center text-xs text-gray-500 pt-6">© AYii – CTA Dashboard (Propreté)</footer>
   </div>
 
 <script>
@@ -101,7 +105,17 @@ async def dashboard_pro():
   const tokenKey = "ayii_admin_token";
   const api = (p)=> p.startsWith("http")?p:(location.origin+p);
 
-  // 🔍 récupère l'ID ciblé dans l'URL : ?focus_id=xxxx
+  // Types propreté
+  const RATP_KINDS = new Set([
+    'blood',
+    'urine',
+    'vomit',
+    'excrement',
+    'syringe',
+    'glass'
+  ]);
+
+  // focus_id éventuel (pour pointer un ID depuis la carte / autre écran)
   const urlParams = new URLSearchParams(location.search);
   const focusId = urlParams.get("focus_id") || "";
 
@@ -126,7 +140,7 @@ async def dashboard_pro():
   // Summary
   async function loadSummary(){
     try{
-      const j=await getJSON(api("/metrics/summary"));
+      const j=await getJSON(api("/metrics/summary?hours=24"));
       $("#sum_total").textContent=j.total?.n_total ?? "--";
       $("#sum_new").textContent=j.total?.n_new ?? "--";
       $("#sum_confirmed").textContent=j.total?.n_confirmed ?? "--";
@@ -140,9 +154,8 @@ async def dashboard_pro():
   async function loadTimeseries(){
     try{
       const k=$("#kindFilter").value.trim();
-      const url = k 
-        ? api(`/metrics/incidents_by_day?days=30&kind=${encodeURIComponent(k)}`) 
-        : api(`/metrics/incidents_by_day?days=30`);
+      const base = "/metrics/incidents_by_day?days=30";
+      const url  = k ? api(base + "&kind="+encodeURIComponent(k)) : api(base);
       const j=await getJSON(url);
       const series=(j.series||[]).slice().sort((a,b)=>a.day.localeCompare(b.day));
       const labels=series.map(r=>r.day);
@@ -150,7 +163,7 @@ async def dashboard_pro():
       if(tsChart) tsChart.destroy();
       tsChart=new Chart($("#tsChart").getContext("2d"),{
         type:"line",
-        data:{ labels, datasets:[{ label:"Reports (cut) / jour", data, tension:.25, fill:true }]},
+        data:{ labels, datasets:[{ label:"Signalements / jour", data, tension:.25, fill:true }]},
         options:{
           responsive:true, maintainAspectRatio:false,
           scales:{ y:{ beginAtZero:true, ticks:{ precision:0 }}, x:{ ticks:{ maxRotation:0 }}},
@@ -161,53 +174,42 @@ async def dashboard_pro():
   }
 
   // Pie kind
-    let pieKind;
+  let pieKind;
   async function loadPieKind(){
     try{
-      const j = await getJSON(api("/metrics/kind_breakdown?days=30"));
-      const raw = j.items || [];
-
-      // 🔹 Types propreté RATP que l’on veut mettre en avant
-      const RATP_KINDS = ["blood", "urine", "vomit", "excreta", "syringe", "broken_glass"];
-
-      // On filtre d'abord sur ces types
-      let filtered = raw.filter(r => RATP_KINDS.includes(String(r.kind || "").toLowerCase()));
-
-      // ⚠️ Si jamais il n'y a encore aucun signalement RATP
-      // (ex : environnement de test), on retombe sur tous les types.
-      if (filtered.length === 0) {
-        filtered = raw;
-      }
-
-      const labels = filtered.map(r => r.kind);
-      const data   = filtered.map(r => r.n);
-
-      if (pieKind) pieKind.destroy();
-      pieKind = new Chart($("#pieKind").getContext("2d"), {
-        type: "doughnut",
-        data: { labels, datasets: [{ data }] },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { position: "bottom" } }
-        }
+      const j=await getJSON(api("/metrics/kind_breakdown?days=30"));
+      // backend renvoie déjà uniquement les kinds RATP
+      const labels=j.items.map(r=>r.kind);
+      const data=j.items.map(r=>r.n);
+      if(pieKind) pieKind.destroy();
+      pieKind=new Chart($("#pieKind").getContext("2d"),{
+        type:"doughnut",
+        data:{ labels, datasets:[{ data }] },
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:"bottom" } } }
       });
-    } catch(e) {
-      console.error(e);
-    }
+    }catch(e){ console.error(e); }
   }
 
-
-  // Gravité
+  // Gravité (propreté)
   function severityScore(x){
     const kind=String(x.kind||'').toLowerCase();
     const ageMin=Number.isFinite(+x.age_min)?+x.age_min:9999;
     const hasPhoto=!!x.photo_url;
     const reports=Number(x.reports_count||0);
     const attach=Number(x.attachments_count||0);
-    const W={fire:30, accident:25, flood:18, power:12, water:10, traffic:8};
-    let s=W[kind]||6;
-    if(ageMin<=5) s+=25; else if(ageMin<=15) s+=18; else if(ageMin<=60) s+=8; else if(ageMin<=180) s+=3;
+    const W={
+      blood:30,
+      syringe:30,
+      excrement:22,
+      glass:18,
+      vomit:14,
+      urine:10
+    };
+    let s=W[kind] ?? 8;
+    if(ageMin<=5)      s+=25;
+    else if(ageMin<=15)s+=18;
+    else if(ageMin<=60)s+=8;
+    else if(ageMin<=180)s+=3;
     if(hasPhoto) s+=10;
     s+=Math.min(20, reports*4);
     s+=Math.min(12, attach*3);
@@ -223,21 +225,19 @@ async def dashboard_pro():
 
   function fmtAgeMin(m){ return (m==null)? "-" : `${m} min`; }
 
-  // Incidents table
+  // Incidents table (on affiche seulement les kinds RATP)
   function renderIncidents(items){
-    const rows=(items||[]).map(it=>{
+    const filtered = (items||[]).filter(it =>
+      RATP_KINDS.has(String(it.kind||"").toLowerCase())
+    );
+
+    const rows=filtered.map(it=>{
       const sev=severityScore(it);
       const highlight = focusId && String(it.id) === focusId;
       return `
       <tr class="border-b last:border-none hover:bg-gray-50${highlight ? " bg-yellow-50" : ""}" data-incid="${it.id}">
         <td class="p-2 text-xs">
-          <a
-            href="https://ayii.netlify.app/?focus_id=${it.id}&focus_lat=${it.lat}&focus_lng=${it.lng}&focus_phone=${encodeURIComponent(it.phone || "")}"
-            class="text-blue-600 underline"
-            target="_blank"
-          >
-            ${it.id}
-          </a>
+          <span class="font-mono">${(it.id||"").slice(0,8)}</span>
         </td>
         <td class="p-2 font-medium">${it.kind}</td>
         <td class="p-2">${it.signal}</td>
@@ -283,12 +283,11 @@ async def dashboard_pro():
   async function loadIncidents(){
     try{
       const s=$("#status").value;
-      const j=await getJSON(api(`/cta/incidents_v2?status=${encodeURIComponent(s)}&limit=20`));
+      const j=await getJSON(api(`/cta/incidents_v2?status=${encodeURIComponent(s)}&limit=50`));
       const items = (j.items || []).slice()
         .sort((a,b)=> (Date.parse(b.created_at||0)||0) - (Date.parse(a.created_at||0)||0));
       renderIncidents(items);
 
-      // 🔁 petit délai pour être sûr que le DOM est prêt avant scroll
       if (focusId) {
         setTimeout(() => {
           const row = document.querySelector(`tr[data-incid="${focusId}"]`);
@@ -307,7 +306,6 @@ async def dashboard_pro():
     await Promise.all([loadSummary(), loadTimeseries(), loadPieKind(), loadIncidents()]); 
   }
 
-  // au chargement, si un token est déjà présent, on charge tout direct
   if((localStorage.getItem(tokenKey)||"").trim()) loadAll();
 })();
 </script>

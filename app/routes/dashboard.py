@@ -12,7 +12,7 @@ async def dashboard_page():
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AYii — Dashboard CTA</title>
+  <title>AYii — Dashboard CTA (Propreté RATP)</title>
   <link rel="icon" href="data:,">
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
@@ -58,60 +58,70 @@ async def dashboard_page():
     const $  = (s,el=document)=>el.querySelector(s);
     const $$ = (s,el=document)=>Array.from(el.querySelectorAll(s));
 
-    // Libellés + icônes
-        // Libellés + icônes
+    // --- Types propreté RATP ---
+    const RATP_KINDS = new Set([
+      'blood',      // sang
+      'urine',
+      'vomit',      // vomi
+      'excrement',  // excréments
+      'syringe',    // seringue
+      'glass'       // verre/bouteille cassée
+    ]);
+
     function labelKind(k){
-      k = (k || '').toLowerCase();
-      return k === 'traffic' ? 'embouteillage' :
-             k === 'accident' ? 'accident' :
-             k === 'fire' ? 'incendie' :
-             k === 'flood' ? 'inondation' :
-             k === 'power' ? 'électricité' :
-             k === 'water' ? 'eau' :
-             // 🔹 Types RATP propreté
-             k === 'blood' ? 'sang' :
-             k === 'urine' ? 'urine' :
-             k === 'vomit' ? 'vomi' :
-             k === 'excreta' ? 'excréments' :
-             k === 'syringe' ? 'seringue' :
-             k === 'broken_glass' ? 'verre / bouteille cassée' :
-             (k || '—');
+      k = String(k||'').toLowerCase();
+      return k==='blood'     ? 'Sang'
+           : k==='urine'     ? 'Urine'
+           : k==='vomit'     ? 'Vomi'
+           : k==='excrement' ? 'Excréments'
+           : k==='syringe'   ? 'Seringue'
+           : k==='glass'     ? 'Verre / bouteille cassée'
+           : 'Autre';
     }
 
     function iconKind(k){
-      k = (k || '').toLowerCase();
-      return k === 'traffic' ? '🚗' :
-             k === 'accident' ? '💥' :
-             k === 'fire' ? '🔥' :
-             k === 'flood' ? '🌊' :
-             k === 'power' ? '⚡' :
-             k === 'water' ? '💧' :
-             // 🔹 Icônes RATP
-             k === 'blood' ? '🩸' :
-             k === 'urine' ? '💧' :
-             k === 'vomit' ? '🤢' :
-             k === 'excreta' ? '💩' :
-             k === 'syringe' ? '💉' :
-             k === 'broken_glass' ? '🧩' :
-             '•';
+      k = String(k||'').toLowerCase();
+      return k==='blood'     ? '🩸'
+           : k==='urine'     ? '🚻'
+           : k==='vomit'     ? '🤢'
+           : k==='excrement' ? '💩'
+           : k==='syringe'   ? '💉'
+           : k==='glass'     ? '🥃'
+           : '•';
     }
 
-
-    // Gravité (front-only)
+    // Gravité (front-only, adaptée propreté)
     function severityScore(x){
       const kind=String(x.kind||'').toLowerCase();
       const ageMin=Number.isFinite(+x.age_min)?+x.age_min:9999;
       const hasPhoto=!!x.photo_url;
       const reports=Number(x.reports_count||0);
       const attach=Number(x.attachments_count||0);
-      const W={fire:30, accident:25, flood:18, power:12, water:10, traffic:8};
-      let s=W[kind]||6;
-      if(ageMin<=5) s+=25; else if(ageMin<=15) s+=18; else if(ageMin<=60) s+=8; else if(ageMin<=180) s+=3;
+
+      // Poids par type (propreté)
+      const W = {
+        blood:     30,
+        syringe:   30,
+        excrement: 22,
+        glass:     18,
+        vomit:     14,
+        urine:     10
+      };
+
+      let s = W[kind] ?? 8;
+
+      if(ageMin<=5)      s+=25;
+      else if(ageMin<=15) s+=18;
+      else if(ageMin<=60) s+=8;
+      else if(ageMin<=180)s+=3;
+
       if(hasPhoto) s+=10;
       s+=Math.min(20, reports*4);
       s+=Math.min(12, attach*3);
+
       return Math.max(0,Math.min(100,Math.round(s)));
     }
+
     function severityChip(score){
       const lv = score>=60?'high':score>=30?'med':'low';
       const label = lv==='high'?'Élevée':lv==='med'?'Moyenne':'Faible';
@@ -121,6 +131,7 @@ async def dashboard_page():
     }
 
     const api = {
+      // ⚠️ on reste sur /cta/incidents_v2 mais on filtrera côté front
       incidents:(token,{status,limit})=>{
         const u=new URL('/cta/incidents_v2', location.origin);
         if(status) u.searchParams.set('status',status);
@@ -149,103 +160,105 @@ async def dashboard_page():
     }
 
     function buildThumbHTML(item){
-  const icon = iconKind(item.kind);
-  const url  = item.photo_url || "";
-  const isVideo = url && (/\.(mp4|webm|mov)(\?|$)/i.test(url));
+      const icon = iconKind(item.kind);
+      const url  = item.photo_url || "";
+      const isVideo = url && (/\.(mp4|webm|mov)(\?|$)/i.test(url));
 
-  return `
-    <div class="thumbbox">
-      <div class="icon">${icon}</div>
-      ${
-        url
-          ? (
-              isVideo
-                ? `<video class="thumb" src="${url}" muted loop playsinline
-                       onloadeddata="this.previousElementSibling.style.display='none'">
-                   </video>`
-                : `<img class="thumb" src="${url}" alt="${item.kind||''}"
-                       onload="this.previousElementSibling.style.display='none'"
-                       onerror="this.style.display='none'; this.previousElementSibling.style.display='flex'">`
-            )
-          : ``
-      }
-    </div>
-  `;
-}
-
-
-
-    function render(){
-  const list = $('#list');
-  list.innerHTML = '';
-  let data = state.items.slice();
-
-  if (state.filters.kind)
-    data = data.filter(x => (x.kind||'').toLowerCase() === state.filters.kind);
-
-  const q = (state.filters.q || '').trim().toLowerCase();
-  if (q)
-    data = data.filter(x =>
-      (x.id||'').toLowerCase().includes(q) ||
-      (x.note||'').toLowerCase().includes(q)
-    );
-
-  const ts = d => Date.parse(d?.created_at || 0) || 0;
-  data.sort((a,b)=> ts(b) - ts(a));
-
-  $('#summary').textContent = data.length + ' élément(s)';
-  const tpl = $('#tpl-row');
-
-  data.forEach(x => {
-    const frag = tpl.content.cloneNode(true);
-
-    $('.thumbhost', frag).innerHTML = buildThumbHTML(x);
-
-    $('[data-kind]', frag).textContent = iconKind(x.kind) + ' ' + labelKind(x.kind);
-    const st = (x.status || 'new');
-    const chip = $('.chip', frag);
-    chip.textContent = st;
-    chip.classList.add('chip-' + st);
-    chip.insertAdjacentHTML('afterend', ' ' + severityChip(severityScore(x)));
-
-    $('[data-id]',  frag).textContent = (x.id || '').slice(0,8);
-    $('[data-geo]', frag).textContent = (+x.lat).toFixed(5) + ', ' + (+x.lng).toFixed(5);
-    $('[data-when]',frag).textContent = (x.created_at || '').replace('T',' ').replace('Z','');
-    $('[data-age]', frag).textContent = (x.age_min != null) ? ('il y a ' + x.age_min + ' min') : '';
-
-    // ✅ on montre le numéro s’il existe
-    const phoneEl = $('[data-phone]', frag);
-    if (x.phone) {
-      phoneEl.textContent = '📞 ' + x.phone;
-      phoneEl.style.display = 'block';
+      return `
+        <div class="thumbbox">
+          <div class="icon">${icon}</div>
+          ${
+            url
+              ? (
+                  isVideo
+                    ? `<video class="thumb" src="${url}" muted loop playsinline
+                           onloadeddata="this.previousElementSibling.style.display='none'">
+                       </video>`
+                    : `<img class="thumb" src="${url}" alt="${item.kind||''}"
+                           onload="this.previousElementSibling.style.display='none'"
+                           onerror="this.style.display='none'; this.previousElementSibling.style.display='flex'">`
+                )
+              : ``
+          }
+        </div>
+      `;
     }
 
-    $$('[data-act]', frag).forEach(btn => {
-      btn.onclick = async () => {
-        if (!state.token) { alert('Token requis'); return; }
-        const act  = btn.getAttribute('data-act');
-        const next = (act === 'confirm') ? 'confirmed' : 'resolved';
-        const old  = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = '…';
-        try {
-          const res = await api.mark(state.token, x.id, next);
-          if (!res.ok) throw new Error(res.detail || 'Erreur');
-          x.status = next;
-          render();
-        } catch(e) {
-          alert('Action impossible: ' + (e?.message || e));
-        } finally {
-          btn.disabled = false;
-          btn.textContent = old;
+    function render(){
+      const list = $('#list');
+      list.innerHTML = '';
+      let data = state.items.slice();
+
+      // 1) On ne garde QUE les types RATP
+      data = data.filter(x => RATP_KINDS.has(String(x.kind||'').toLowerCase()));
+
+      // 2) Filtre "type" (select) éventuel
+      if (state.filters.kind)
+        data = data.filter(x => String(x.kind||'').toLowerCase() === state.filters.kind);
+
+      // 3) Recherche plein texte
+      const q = (state.filters.q || '').trim().toLowerCase();
+      if (q)
+        data = data.filter(x =>
+          (x.id||'').toLowerCase().includes(q) ||
+          (x.note||'').toLowerCase().includes(q)
+        );
+
+      const ts = d => Date.parse(d?.created_at || 0) || 0;
+      data.sort((a,b)=> ts(b) - ts(a));
+
+      $('#summary').textContent = data.length + ' signalement(s) propreté';
+      const tpl = $('#tpl-row');
+
+      data.forEach(x => {
+        const frag = tpl.content.cloneNode(true);
+
+        $('.thumbhost', frag).innerHTML = buildThumbHTML(x);
+
+        $('[data-kind]', frag).textContent = iconKind(x.kind) + ' ' + labelKind(x.kind);
+        const st = (x.status || 'new');
+        const chip = $('.chip', frag);
+        chip.textContent = st;
+        chip.classList.add('chip-' + st);
+        chip.insertAdjacentHTML('afterend', ' ' + severityChip(severityScore(x)));
+
+        $('[data-id]',  frag).textContent = (x.id || '').slice(0,8);
+        $('[data-geo]', frag).textContent = (+x.lat).toFixed(5) + ', ' + (+x.lng).toFixed(5);
+        $('[data-when]',frag).textContent = (x.created_at || '').replace('T',' ').replace('Z','');
+        $('[data-age]', frag).textContent = (x.age_min != null) ? ('il y a ' + x.age_min + ' min') : '';
+
+        // Numéro de téléphone (si fourni)
+        const phoneEl = $('[data-phone]', frag);
+        if (x.phone) {
+          phoneEl.textContent = '📞 ' + x.phone;
+          phoneEl.style.display = 'block';
         }
-      };
-    });
 
-    list.appendChild(frag);
-  });
-}
+        $$('[data-act]', frag).forEach(btn => {
+          btn.onclick = async () => {
+            if (!state.token) { alert('Token requis'); return; }
+            const act  = btn.getAttribute('data-act');
+            const next = (act === 'confirm') ? 'confirmed' : 'resolved';
+            const old  = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '…';
+            try {
+              const res = await api.mark(state.token, x.id, next);
+              if (!res.ok) throw new Error(res.detail || 'Erreur');
+              x.status = next;
+              render();
+            } catch(e) {
+              alert('Action impossible: ' + (e?.message || e));
+            } finally {
+              btn.disabled = false;
+              btn.textContent = old;
+            }
+          };
+        });
 
+        list.appendChild(frag);
+      });
+    }
 
     async function load(){
       if(!state.token){ $('#auth-status').textContent='Token manquant'; state.items=[]; render(); return; }
@@ -278,7 +291,7 @@ async def dashboard_page():
 <body>
   <div class="sticky-top border-b" style="border-color:var(--ring);">
     <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-      <h1 class="text-xl md:text-2xl font-bold">Dashboard CTA</h1>
+      <h1 class="text-xl md:text-2xl font-bold">Dashboard CTA – Propreté RATP</h1>
       <div class="flex items-center gap-2">
         <button id="btn-refresh" class="btn btn-ghost">Rafraîchir</button>
         <a id="btn-export-reports" href="#" class="btn btn-ghost">Export Reports CSV</a>
@@ -307,19 +320,31 @@ async def dashboard_page():
           <div>
             <label class="text-xs" style="color:var(--muted)">Statut</label>
             <select id="f-status" class="w-full rounded-xl border px-3 py-2" style="border-color:var(--ring); background:var(--card); color:var(--fg);">
-              <option value="">(Tous)</option><option value="new">Nouveau</option><option value="confirmed">Confirmé</option><option value="resolved">Traité</option>
+              <option value="">(Tous)</option>
+              <option value="new">Nouveau</option>
+              <option value="confirmed">Confirmé</option>
+              <option value="resolved">Traité</option>
             </select>
           </div>
           <div>
             <label class="text-xs" style="color:var(--muted)">Type</label>
             <select id="f-kind" class="w-full rounded-xl border px-3 py-2" style="border-color:var(--ring); background:var(--card); color:var(--fg);">
-              <option value="">(Tous)</option><option value="fire">Feu</option><option value="accident">Accident</option><option value="flood">Inondation</option><option value="traffic">Trafic</option><option value="power">Électricité</option><option value="water">Eau</option>
+              <option value="">(Tous)</option>
+              <option value="blood">Sang</option>
+              <option value="urine">Urine</option>
+              <option value="vomit">Vomi</option>
+              <option value="excrement">Excréments</option>
+              <option value="syringe">Seringue</option>
+              <option value="glass">Verre / bouteille cassée</option>
             </select>
           </div>
           <div>
             <label class="text-xs" style="color:var(--muted)">Limite</label>
             <select id="f-limit" class="w-full rounded-xl border px-3 py-2" style="border-color:var(--ring); background:var(--card); color:var(--fg);">
-              <option>50</option><option selected>100</option><option>200</option><option>500</option>
+              <option>50</option>
+              <option selected>100</option>
+              <option>200</option>
+              <option>500</option>
             </select>
           </div>
           <div>
@@ -332,7 +357,7 @@ async def dashboard_page():
 
     <div class="card">
       <div class="p-4 flex items-center justify-between border-b" style="border-color:var(--ring);">
-        <div class="font-semibold">Signalements</div>
+        <div class="font-semibold">Signalements propreté</div>
         <div id="summary" class="text-sm" style="color:var(--muted)"></div>
       </div>
       <div id="list"></div>
@@ -355,7 +380,6 @@ async def dashboard_page():
         <span style="color:#94a3b8">•</span>
         <span data-when style="color:#475569"></span>
       </div>
-      <!-- 👇 ligne téléphone qu’on peut cacher -->
       <div data-phone style="display:none; font-size:11px; color:var(--muted);"></div>
     </div>
     <div class="flex items-center gap-2">
@@ -363,7 +387,7 @@ async def dashboard_page():
       <button data-act="resolve" class="btn btn-ghost">Traiter</button>
     </div>
   </div>
-</template>
+  </template>
 
 </body>
 </html>
