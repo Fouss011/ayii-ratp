@@ -124,12 +124,11 @@ ALERT_THRESHOLD  = int(os.getenv("ALERT_THRESHOLD", "3"))    # nb min de signale
 RESPONDER_TOKEN  = (os.getenv("RESPONDER_TOKEN") or "").strip()  # jeton simple pour “pompiers”
 
 ALLOWED_KINDS = {
-    "urine",
-    "vomit",
-    "feces",
-    "blood",
-    "syringe",
-    "broken_glass",
+    # 🔹 Propreté RATP
+    "urine", "vomit", "feces", "blood", "syringe", "broken_glass",
+    # 🔹 Anciens types Ayii (au cas où le front les appelle encore)
+    "traffic", "accident", "fire", "flood", "power", "water",
+    "assault", "weapon", "medical",
 }
 
 # --------- Helpers ----------
