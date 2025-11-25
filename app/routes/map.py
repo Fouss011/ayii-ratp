@@ -778,17 +778,24 @@ async def map_endpoint(
         if show_all:
             outages   = await fetch_outages_all(db, limit=2000)
             incidents = await fetch_incidents_all(db, limit=2000)
-            payload = {
-                "outages": outages,
-                "incidents": incidents,
-                "alert_zones": [],     # allégé en global
-                "last_reports": [],
-                "server_now": nowz(),
-            }
-            if response is not None:
-                response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-                response.headers["Pragma"] = "no-cache"
-            return payload
+
+        # 🔧 Alias simple : created_at = started_at si manquant
+        for inc in incidents:
+            if not inc.get("created_at"):
+                inc["created_at"] = inc.get("started_at")
+
+        payload = {
+            "outages": outages,
+            "incidents": incidents,
+            "alert_zones": [],     # allégé en global
+            "last_reports": [],
+            "server_now": nowz(),
+        }
+
+        if response is not None:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+        return payload
 
         # --- mode LOCAL (comportement historique) ---
         r_m = float(radius_km * 1000.0)
@@ -796,6 +803,11 @@ async def map_endpoint(
         outages   = await fetch_outages(db, lat, lng, r_m)
         incidents = await fetch_incidents(db, lat, lng, r_m)
         alert_zones = await fetch_alert_zones(db, lat, lng, r_m)
+        # 🔧 Assure un created_at pour le frontend (temps écoulé)
+        for inc in incidents:
+            if not inc.get("created_at"):
+               inc["created_at"] = inc.get("started_at")
+
 
         # derniers reports pour les badges / info
                 # derniers reports pour les badges / info
