@@ -58,8 +58,9 @@ async def is_enum_typename(db: AsyncSession, typname: str) -> bool:
 # -----------------------------------------------------------------------------
 # Constantes
 # -----------------------------------------------------------------------------
-KINDS_OUTAGE    = {"power", "water"}
-INCIDENT_KINDS  = {"traffic", "accident", "fire", "flood"}
+KINDS_OUTAGE    = {}  # tu peux même vider si tu n’utilises plus les coupures
+INCIDENT_KINDS  = {"urine", "vomit", "feces", "blood", "syringe", "broken_glass"}
+
 
 # -----------------------------------------------------------------------------
 # INSERT Report (+ actions automatiques)
@@ -202,10 +203,12 @@ async def insert_report(
             if LOG_AGG and closed:
                 print(f"[outage] restored by user click -> id={closed}")
 
-        if signal == "cut" and kind in INCIDENT_KINDS:
+        # Pour la RATP, on considère "to_clean" comme un signal de création d’incident
+        if signal in ("cut", "to_clean") and kind in INCIDENT_KINDS:
             iid = await upsert_incident_from_report(db, kind, lat, lng)
             if LOG_AGG:
                 print(f"[incident] upsert kind={kind} -> id={iid}")
+
 
         if signal == "restored" and kind in INCIDENT_KINDS:
             cleared = await clear_nearest_incident(db, kind, lat, lng)
