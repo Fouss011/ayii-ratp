@@ -434,6 +434,7 @@ async def fetch_outages(db: AsyncSession, lat: float, lng: float, r_m: float):
                CASE WHEN o.restored_at IS NULL THEN 'active' ELSE 'restored' END AS status,
                ST_Y((o.center::geometry)) AS lat,
                ST_X((o.center::geometry)) AS lng,
+               COALESCE(o.created_at, o.started_at) AS created_at,
                o.started_at,
                o.restored_at,
                COALESCE(att.cnt, 0)::int AS attachments_count,
@@ -466,6 +467,7 @@ async def fetch_outages(db: AsyncSession, lat: float, lng: float, r_m: float):
                CASE WHEN o.restored_at IS NULL THEN 'active' ELSE 'restored' END AS status,
                ST_Y((o.center::geometry)) AS lat,
                ST_X((o.center::geometry)) AS lng,
+               COALESCE(o.created_at, o.started_at) AS created_at,
                o.started_at,
                o.restored_at,
                0::int AS attachments_count,
@@ -484,12 +486,15 @@ async def fetch_outages(db: AsyncSession, lat: float, lng: float, r_m: float):
         {
             "id": r.id, "kind": r.kind, "status": r.status,
             "lat": float(r.lat), "lng": float(r.lng),
+            "created_at": getattr(r, "created_at", None),
             "started_at": getattr(r, "started_at", None),
             "restored_at": getattr(r, "restored_at", None),
             "attachments_count": getattr(r, "attachments_count", 0),
             "reports_count": getattr(r, "reports_count", 0),
         } for r in rows
     ]
+
+
 
 async def fetch_incidents(db: AsyncSession, lat: float, lng: float, r_m: float):
     q_full = text(f"""
@@ -501,10 +506,12 @@ async def fetch_incidents(db: AsyncSession, lat: float, lng: float, r_m: float):
                CASE WHEN i.restored_at IS NULL THEN 'active' ELSE 'restored' END AS status,
                ST_Y((i.center::geometry)) AS lat,
                ST_X((i.center::geometry)) AS lng,
+               COALESCE(i.created_at, i.started_at) AS created_at,
                i.started_at,
                i.restored_at,
                COALESCE(att.cnt, 0)::int AS attachments_count,
-               COALESCE(rep.cnt, 0)::int AS reports_count
+               COALESCE(rep.cnt, 0)::int AS reports_count,
+               i.note::text AS note
         FROM incidents i
         LEFT JOIN LATERAL (
           SELECT COUNT(*)::int AS cnt
@@ -533,10 +540,12 @@ async def fetch_incidents(db: AsyncSession, lat: float, lng: float, r_m: float):
                CASE WHEN i.restored_at IS NULL THEN 'active' ELSE 'restored' END AS status,
                ST_Y((i.center::geometry)) AS lat,
                ST_X((i.center::geometry)) AS lng,
+               COALESCE(i.created_at, i.started_at) AS created_at,
                i.started_at,
                i.restored_at,
                0::int AS attachments_count,
-               0::int AS reports_count
+               0::int AS reports_count,
+               NULL::text AS note
         FROM incidents i
         WHERE ST_DWithin((i.center::geography), (SELECT g FROM me), :r)
         ORDER BY i.started_at DESC NULLS LAST, i.id DESC
@@ -551,12 +560,15 @@ async def fetch_incidents(db: AsyncSession, lat: float, lng: float, r_m: float):
         {
             "id": r.id, "kind": r.kind, "status": r.status,
             "lat": float(r.lat), "lng": float(r.lng),
+            "created_at": getattr(r, "created_at", None),
             "started_at": getattr(r, "started_at", None),
             "restored_at": getattr(r, "restored_at", None),
             "attachments_count": getattr(r, "attachments_count", 0),
             "reports_count": getattr(r, "reports_count", 0),
+            "note": getattr(r, "note", None),
         } for r in rows
     ]
+
 
 # ---------- LECTURES GLOBAL (show_all) ----------
 async def fetch_outages_all(db: AsyncSession, limit: int = 2000):
@@ -566,6 +578,56 @@ async def fetch_outages_all(db: AsyncSession, limit: int = 2000):
                CASE WHEN o.restored_at IS NULL THEN 'active' ELSE 'restored' END AS status,
                ST_Y((o.center::geometry)) AS lat,
                ST_X((o.center::geometry)) AS lng,
+               COALESCE(o.created_at, o.started_at) AS created_at,
+               o.started_at,
+               o.restored_at,
+               COALESCE(att.cnt, 0)::int AS attachments_count,
+               COALESCE(rep.cnt, 0)::int AS reports_count,
+               o.note::text AS note
+        FROM outages o
+        LEFT JOIN LATERAL (
+          SELECT COUNT(*)::int AS cnt
+            FROM attachments a
+           WHERE a.kind::text = o.kind::text
+             AND a.created_at > NOW() - INTERVAL '48 hours'
+             AND ST_DWithin((a.geom::geography), (o.center::geography), 120)
+        ) att ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT COUNT(*)::int AS cnt
+            FROM reports r
+           WHERE LOWER(TRIM(r.signal::text))='cut'
+             AND r.created_at > NOW() - INTERVAL '{POINTS_WINDOW_MIN} minutes'
+             AND r.kind::text = o.kind::text
+             AND ST_DWithin((r.geom::geography), (o.center::geography), 120)
+        ) rep ON TRUE
+        WHERE o.restored_at IS NULL
+        ORDER BY o.started_at DESC NULLS LAST, o.id DESC
+        LIMIT :lim
+    """)
+    res = await db.execute(q, {"lim": limit})
+    rows = res.fetchall()
+    return [
+        {
+            "id": r.id, "kind": r.kind, "status": r.status,
+            "lat": float(r.lat), "lng": float(r.lng),
+            "created_at": getattr(r, "created_at", None),
+            "started_at": getattr(r, "started_at", None),
+            "restored_at": getattr(r, "restored_at", None),
+            "attachments_count": getattr(r, "attachments_count", 0),
+            "reports_count": getattr(r, "reports_count", 0),
+            "note": getattr(r, "note", None),
+        } for r in rows
+    ]
+
+
+async def fetch_outages_all(db: AsyncSession, limit: int = 2000):
+    q = text(f"""
+        SELECT o.id,
+               o.kind::text AS kind,
+               CASE WHEN o.restored_at IS NULL THEN 'active' ELSE 'restored' END AS status,
+               ST_Y((o.center::geometry)) AS lat,
+               ST_X((o.center::geometry)) AS lng,
+               COALESCE(o.created_at, o.started_at) AS created_at,
                o.started_at,
                o.restored_at,
                COALESCE(att.cnt, 0)::int AS attachments_count,
@@ -596,6 +658,7 @@ async def fetch_outages_all(db: AsyncSession, limit: int = 2000):
         {
             "id": r.id, "kind": r.kind, "status": r.status,
             "lat": float(r.lat), "lng": float(r.lng),
+            "created_at": getattr(r, "created_at", None),
             "started_at": getattr(r, "started_at", None),
             "restored_at": getattr(r, "restored_at", None),
             "attachments_count": getattr(r, "attachments_count", 0),
@@ -603,49 +666,6 @@ async def fetch_outages_all(db: AsyncSession, limit: int = 2000):
         } for r in rows
     ]
 
-async def fetch_incidents_all(db: AsyncSession, limit: int = 2000):
-    q = text(f"""
-        SELECT i.id,
-               i.kind::text AS kind,
-               CASE WHEN i.restored_at IS NULL THEN 'active' ELSE 'restored' END AS status,
-               ST_Y((i.center::geometry)) AS lat,
-               ST_X((i.center::geometry)) AS lng,
-               i.started_at,
-               i.restored_at,
-               COALESCE(att.cnt, 0)::int AS attachments_count,
-               COALESCE(rep.cnt, 0)::int AS reports_count
-        FROM incidents i
-        LEFT JOIN LATERAL (
-          SELECT COUNT(*)::int AS cnt
-            FROM attachments a
-           WHERE a.kind::text = i.kind::text
-             AND a.created_at > NOW() - INTERVAL '48 hours'
-             AND ST_DWithin((a.geom::geography), (i.center::geography), 120)
-        ) att ON TRUE
-        LEFT JOIN LATERAL (
-          SELECT COUNT(*)::int AS cnt
-            FROM reports r
-           WHERE LOWER(TRIM(r.signal::text))='cut'
-             AND r.created_at > NOW() - INTERVAL '{POINTS_WINDOW_MIN} minutes'
-             AND r.kind::text = i.kind::text
-             AND ST_DWithin((r.geom::geography), (i.center::geography), 120)
-        ) rep ON TRUE
-        WHERE i.restored_at IS NULL
-        ORDER BY i.started_at DESC NULLS LAST, i.id DESC
-        LIMIT :lim
-    """)
-    res = await db.execute(q, {"lim": limit})
-    rows = res.fetchall()
-    return [
-        {
-            "id": r.id, "kind": r.kind, "status": r.status,
-            "lat": float(r.lat), "lng": float(r.lng),
-            "started_at": getattr(r, "started_at", None),
-            "restored_at": getattr(r, "restored_at", None),
-            "attachments_count": getattr(r, "attachments_count", 0),
-            "reports_count": getattr(r, "reports_count", 0),
-        } for r in rows
-    ]
 
 # --- Helper pour /map : zones d’alerte via cluster DBSCAN ---
 
