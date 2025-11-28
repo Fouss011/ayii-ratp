@@ -449,7 +449,7 @@ async def fetch_outages(db: AsyncSession, lat: float, lng: float, r_m: float):
         LEFT JOIN LATERAL (
           SELECT COUNT(*)::int AS cnt
             FROM reports r
-           WHERE LOWER(TRIM(r.signal::text))='cut'
+           WHERE LOWER(TRIM(r.signal::text)) = 'cut'
              AND r.created_at > NOW() - INTERVAL '{POINTS_WINDOW_MIN} minutes'
              AND r.kind::text = o.kind::text
              AND ST_DWithin((r.geom::geography), (o.center::geography), 120)
@@ -482,15 +482,19 @@ async def fetch_outages(db: AsyncSession, lat: float, lng: float, r_m: float):
     rows = res.fetchall()
     return [
         {
-            "id": r.id, "kind": r.kind, "status": r.status,
-            "lat": float(r.lat), "lng": float(r.lng),
-            # 👉 created_at fabriqué à partir de started_at
+            "id": r.id,
+            "kind": r.kind,
+            "status": r.status,
+            "lat": float(r.lat),
+            "lng": float(r.lng),
+            # created_at dérivé : le front utilise ça pour timeAgo
             "created_at": getattr(r, "started_at", None),
             "started_at": getattr(r, "started_at", None),
             "restored_at": getattr(r, "restored_at", None),
             "attachments_count": getattr(r, "attachments_count", 0),
             "reports_count": getattr(r, "reports_count", 0),
-        } for r in rows
+        }
+        for r in rows
     ]
 
 
@@ -516,7 +520,7 @@ async def fetch_outages_all(db: AsyncSession, limit: int = 2000):
         LEFT JOIN LATERAL (
           SELECT COUNT(*)::int AS cnt
             FROM reports r
-           WHERE LOWER(TRIM(r.signal::text))='cut'
+           WHERE LOWER(TRIM(r.signal::text)) = 'cut'
              AND r.created_at > NOW() - INTERVAL '{POINTS_WINDOW_MIN} minutes'
              AND r.kind::text = o.kind::text
              AND ST_DWithin((r.geom::geography), (o.center::geography), 120)
@@ -529,14 +533,18 @@ async def fetch_outages_all(db: AsyncSession, limit: int = 2000):
     rows = res.fetchall()
     return [
         {
-            "id": r.id, "kind": r.kind, "status": r.status,
-            "lat": float(r.lat), "lng": float(r.lng),
+            "id": r.id,
+            "kind": r.kind,
+            "status": r.status,
+            "lat": float(r.lat),
+            "lng": float(r.lng),
             "created_at": getattr(r, "started_at", None),
             "started_at": getattr(r, "started_at", None),
             "restored_at": getattr(r, "restored_at", None),
             "attachments_count": getattr(r, "attachments_count", 0),
             "reports_count": getattr(r, "reports_count", 0),
-        } for r in rows
+        }
+        for r in rows
     ]
 
 
@@ -566,7 +574,7 @@ async def fetch_incidents(db: AsyncSession, lat: float, lng: float, r_m: float):
         LEFT JOIN LATERAL (
           SELECT COUNT(*)::int AS cnt
             FROM reports r
-           WHERE LOWER(TRIM(r.signal::text)) = 'cut'
+           WHERE LOWER(TRIM(r.signal::text)) IN ('cut', 'to_clean')
              AND r.created_at > NOW() - INTERVAL '{POINTS_WINDOW_MIN} minutes'
              AND r.kind::text = i.kind::text
              AND ST_DWithin((r.geom::geography), (i.center::geography), 25)
@@ -609,15 +617,19 @@ async def fetch_incidents(db: AsyncSession, lat: float, lng: float, r_m: float):
     rows = res.fetchall()
     return [
         {
-            "id": r.id, "kind": r.kind, "status": r.status,
-            "lat": float(r.lat), "lng": float(r.lng),
+            "id": r.id,
+            "kind": r.kind,
+            "status": r.status,
+            "lat": float(r.lat),
+            "lng": float(r.lng),
             "created_at": getattr(r, "started_at", None),
             "started_at": getattr(r, "started_at", None),
             "restored_at": getattr(r, "restored_at", None),
             "attachments_count": getattr(r, "attachments_count", 0),
             "reports_count": getattr(r, "reports_count", 0),
             "note": getattr(r, "note", None),
-        } for r in rows
+        }
+        for r in rows
     ]
 
 
@@ -644,7 +656,7 @@ async def fetch_incidents_all(db: AsyncSession, limit: int = 2000):
         LEFT JOIN LATERAL (
           SELECT COUNT(*)::int AS cnt
             FROM reports r
-           WHERE LOWER(TRIM(r.signal::text)) = 'cut'
+           WHERE LOWER(TRIM(r.signal::text)) IN ('cut', 'to_clean')
              AND r.created_at > NOW() - INTERVAL '{POINTS_WINDOW_MIN} minutes'
              AND r.kind::text = i.kind::text
              AND ST_DWithin((r.geom::geography), (i.center::geography), 25)
@@ -666,17 +678,20 @@ async def fetch_incidents_all(db: AsyncSession, limit: int = 2000):
     rows = res.fetchall()
     return [
         {
-            "id": r.id, "kind": r.kind, "status": r.status,
-            "lat": float(r.lat), "lng": float(r.lng),
+            "id": r.id,
+            "kind": r.kind,
+            "status": r.status,
+            "lat": float(r.lat),
+            "lng": float(r.lng),
             "created_at": getattr(r, "started_at", None),
             "started_at": getattr(r, "started_at", None),
             "restored_at": getattr(r, "restored_at", None),
             "attachments_count": getattr(r, "attachments_count", 0),
             "reports_count": getattr(r, "reports_count", 0),
             "note": getattr(r, "note", None),
-        } for r in rows
+        }
+        for r in rows
     ]
-
 
 
 
