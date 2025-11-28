@@ -56,6 +56,25 @@ if ReportIn is None:
         device_id: Optional[str] = Field(default=None)
         idempotency_key: Optional[str] = Field(default=None)
 
+# rayon pour "même incident" en mètres
+SAME_INCIDENT_RADIUS_M = 25.0
+
+async def find_nearby_incident(db, kind: str, lat: float, lng: float):
+    q = text("""
+        WITH p AS (
+          SELECT ST_SetSRID(ST_MakePoint(:lng,:lat),4326)::geography AS g
+        )
+        SELECT i.id
+          FROM incidents i
+         WHERE i.kind::text = :kind
+           AND i.restored_at IS NULL
+           AND ST_DWithin((i.center::geography), (SELECT g FROM p), :r)
+         ORDER BY i.started_at ASC
+         LIMIT 1
+    """)
+    res = await db.execute(q, {"kind": kind, "lat": lat, "lng": lng, "r": SAME_INCIDENT_RADIUS_M})
+    row = res.first()
+    return row.id if row else None
 
 router = APIRouter()
 

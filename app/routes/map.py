@@ -569,14 +569,14 @@ async def fetch_incidents(db: AsyncSession, lat: float, lng: float, r_m: float):
            WHERE LOWER(TRIM(r.signal::text)) = 'cut'
              AND r.created_at > NOW() - INTERVAL '{POINTS_WINDOW_MIN} minutes'
              AND r.kind::text = i.kind::text
-             AND ST_DWithin((r.geom::geography), (i.center::geography), 120)
+             AND ST_DWithin((r.geom::geography), (i.center::geography), 25)
         ) rep ON TRUE
         LEFT JOIN LATERAL (
           SELECT r.note::text AS note_text
             FROM reports r
            WHERE r.kind::text = i.kind::text
              AND r.note IS NOT NULL
-             AND ST_DWithin((r.geom::geography), (i.center::geography), 120)
+             AND ST_DWithin((r.geom::geography), (i.center::geography), 25)
            ORDER BY r.created_at ASC
            LIMIT 1
         ) info ON TRUE
@@ -647,14 +647,14 @@ async def fetch_incidents_all(db: AsyncSession, limit: int = 2000):
            WHERE LOWER(TRIM(r.signal::text)) = 'cut'
              AND r.created_at > NOW() - INTERVAL '{POINTS_WINDOW_MIN} minutes'
              AND r.kind::text = i.kind::text
-             AND ST_DWithin((r.geom::geography), (i.center::geography), 120)
+             AND ST_DWithin((r.geom::geography), (i.center::geography), 25)
         ) rep ON TRUE
         LEFT JOIN LATERAL (
           SELECT r.note::text AS note_text
             FROM reports r
            WHERE r.kind::text = i.kind::text
              AND r.note IS NOT NULL
-             AND ST_DWithin((r.geom::geography), (i.center::geography), 120)
+             AND ST_DWithin((r.geom::geography), (i.center::geography), 25)
            ORDER BY r.created_at ASC
            LIMIT 1
         ) info ON TRUE
