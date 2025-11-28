@@ -523,7 +523,7 @@ async def fetch_incidents(db: AsyncSession, lat: float, lng: float, r_m: float):
         LEFT JOIN LATERAL (
           SELECT COUNT(*)::int AS cnt
             FROM reports r
-           WHERE LOWER(TRIM(r.signal::text)) = 'to_clean'
+           WHERE LOWER(TRIM(r.signal::text)) = 'cut'
              AND r.created_at > NOW() - INTERVAL '{POINTS_WINDOW_MIN} minutes'
              AND r.kind::text = i.kind::text
              AND ST_DWithin((r.geom::geography), (i.center::geography), 120)
@@ -604,7 +604,7 @@ async def fetch_incidents_all(db: AsyncSession, limit: int = 2000):
         LEFT JOIN LATERAL (
           SELECT COUNT(*)::int AS cnt
             FROM reports r
-           WHERE LOWER(TRIM(r.signal::text)) = 'to_clean'
+           WHERE LOWER(TRIM(r.signal::text)) = 'cut'
              AND r.created_at > NOW() - INTERVAL '{POINTS_WINDOW_MIN} minutes'
              AND r.kind::text = i.kind::text
              AND ST_DWithin((r.geom::geography), (i.center::geography), 120)
@@ -781,17 +781,32 @@ async def fetch_alert_zones(db: AsyncSession, lat: float, lng: float, r_m: float
 
 
 # ---------- ENDPOINT /map ----------
+from datetime import datetime  # en haut du fichier si pas déjà importé
+
 @router.get("/map")
-async def map_endpoint(
-    lat: float = Query(..., ge=-90, le=90),
-    lng: float = Query(..., ge=-180, le=180),
+async def map_view(
+    lat: float = Query(0.0, ge=-90, le=90),
+    lng: float = Query(0.0, ge=-180, le=180),
     radius_km: float = Query(5.0, gt=0, le=50),
-    show_all: bool = Query(False, description="Si true: renvoie tous les événements actifs (cap)."),
-    response: Response = None,
+    show_all: bool = Query(
+        False,
+        description="Si true: renvoie tous les événements actifs (cap).",
+    ),
     db: AsyncSession = Depends(get_db),
 ):
-    def nowz():
-        return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    """
+    Vue carte RATP : renvoie outages + incidents + last_reports
+    """
+
+    # rayon sécurisé
+    r_km = max(0.3, min(radius_km, 50.0))
+    r_m = float(r_km * 1000.0)
+
+    # ✅ toujours initialisés pour éviter UnboundLocalError
+    outages = []
+    incidents = []
+    last_reports = []
+    alert_zones = []
 
     try:
         # 0) Auto-clôture incidents/outages anciens (si activé)
@@ -813,103 +828,48 @@ async def map_endpoint(
         except Exception:
             await db.rollback()
 
-        # 👉 Mode GLOBAL: on peut alléger (pas de last_reports ni alert_zones)
+        # 1) lecture globale ou locale
         if show_all:
-            outages   = await fetch_outages_all(db, limit=2000)
+            outages = await fetch_outages_all(db, limit=2000)
             incidents = await fetch_incidents_all(db, limit=2000)
+            # alert_zones reste [] en mode global
+        else:
+            outages = await fetch_outages(db, lat, lng, r_m)
+            incidents = await fetch_incidents(db, lat, lng, r_m)
+            # si tu veux remettre les vraies alert_zones plus tard :
+            # alert_zones = await fetch_alert_zones(db, lat, lng, r_m)
 
-        # 🔧 Alias simple : created_at = started_at si manquant
+            # ici on pourrait aussi remplir last_reports si besoin
+            # pour l’instant on laisse [] pour simplifier
+
+        # 🔧 created_at = started_at si manquant (pour le "Signalé il y a ...")
         for inc in incidents:
             if not inc.get("created_at"):
                 inc["created_at"] = inc.get("started_at")
 
-        payload = {
+        return {
             "outages": outages,
             "incidents": incidents,
-            "alert_zones": [],     # allégé en global
-            "last_reports": [],
-            "server_now": nowz(),
-        }
-
-        if response is not None:
-            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-            response.headers["Pragma"] = "no-cache"
-        return payload
-
-        # --- mode LOCAL (comportement historique) ---
-        r_m = float(radius_km * 1000.0)
-
-        outages   = await fetch_outages(db, lat, lng, r_m)
-        incidents = await fetch_incidents(db, lat, lng, r_m)
-        alert_zones = await fetch_alert_zones(db, lat, lng, r_m)
-        # 🔧 Assure un created_at pour le frontend (temps écoulé)
-        for inc in incidents:
-            if not inc.get("created_at"):
-               inc["created_at"] = inc.get("started_at")
-
-
-        # derniers reports pour les badges / info
-                # derniers reports pour les badges / info
-        q_rep = text(f"""
-            WITH me AS (
-              SELECT ST_SetSRID(ST_MakePoint(:lng,:lat),4326)::geography AS g
-            )
-            SELECT id,
-                   kind::text   AS kind,
-                   signal::text AS signal,
-                   ST_Y((geom::geometry)) AS lat,
-                   ST_X((geom::geometry)) AS lng,
-                   user_id,
-                   created_at,
-                   phone                    -- 👈 on l’ajoute ici
-              FROM reports
-             WHERE ST_DWithin((geom::geography), (SELECT g FROM me), :r)
-               AND LOWER(TRIM(signal::text)) = 'cut'
-               AND created_at > NOW() - INTERVAL '{POINTS_WINDOW_MIN} minutes'
-             ORDER BY created_at DESC
-             LIMIT :max
-        """)
-        res_rep = await db.execute(q_rep, {"lng": lng, "lat": lat, "r": r_m, "max": MAX_REPORTS})
-        last_reports = [
-            {
-                "id": r.id,
-                "kind": r.kind,
-                "signal": r.signal,
-                "lat": float(r.lat),
-                "lng": float(r.lng),
-                "user_id": r.user_id,
-                "created_at": r.created_at,
-                "phone": getattr(r, "phone", None),   # 👈 on le remet dans le JSON
-            }
-            for r in res_rep.fetchall()
-        ]
-
-
-        payload = {
-            "outages": outages,
-            "incidents": incidents,
-            "alert_zones": alert_zones,   # 👈 nouveau
+            "alert_zones": alert_zones,
             "last_reports": last_reports,
-            "server_now": nowz(),
+            "server_now": datetime.utcnow().isoformat() + "Z",
         }
-        if response is not None:
-            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-            response.headers["Pragma"] = "no-cache"
-        return payload
 
     except Exception as e:
         try:
             await db.rollback()
         except Exception:
             pass
+
         return {
-            "outages": [],
-            "incidents": [],
-            "alert_zones": [],
-            "last_reports": [],
-            "server_now": nowz(),
+            "outages": outages,
+            "incidents": incidents,
+            "alert_zones": alert_zones,
+            "last_reports": last_reports,
+            "server_now": datetime.utcnow().isoformat() + "Z",
             "error": f"{type(e).__name__}: {e}",
         }
+
 
 
 @router.get("/reports_recent")
