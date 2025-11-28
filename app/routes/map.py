@@ -627,7 +627,8 @@ async def fetch_incidents(db: AsyncSession, lat: float, lng: float, r_m: float):
             "restored_at": getattr(r, "restored_at", None),
             "attachments_count": getattr(r, "attachments_count", 0),
             "reports_count": getattr(r, "reports_count", 0),
-            "note": getattr(r, "note", None),
+            "note": getattr(r, "note_text", None),
+
         }
         for r in rows
     ]
@@ -688,7 +689,8 @@ async def fetch_incidents_all(db: AsyncSession, limit: int = 2000):
             "restored_at": getattr(r, "restored_at", None),
             "attachments_count": getattr(r, "attachments_count", 0),
             "reports_count": getattr(r, "reports_count", 0),
-            "note": getattr(r, "note", None),
+            "note": getattr(r, "note_text", None),
+
         }
         for r in rows
     ]
