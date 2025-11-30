@@ -20,41 +20,33 @@ except Exception:
 from app.services.report_hooks import enrich_and_sign_report
 
 # Essaie d'utiliser ton modèle ReportIn ; sinon, fallback Pydantic
-ReportIn = None
-try:
-    from app.schemas import ReportIn as _ReportIn
-    ReportIn = _ReportIn
-except Exception:
-    try:
-        from app.models.schemas import ReportIn as _ReportIn  # autre emplacement possible
-        ReportIn = _ReportIn
-    except Exception:
-        ReportIn = None
+# ✅ On force notre propre ReportIn, avec tous les champs dont on a besoin
+from pydantic import BaseModel, Field
 
-if ReportIn is None:
-    from pydantic import BaseModel, Field  # fallback
+class ReportIn(BaseModel):
+    kind: str
+    signal: str
+    lat: float
+    lng: float
+    accuracy_m: Optional[int] = Field(default=None)
 
-    class ReportIn(BaseModel):
-        kind: str
-        signal: str
-        lat: float
-        lng: float
-        accuracy_m: Optional[int] = Field(default=None)
+    # 🔹 Contexte transport (RATP / Alepopop)
+    mode: Optional[str] = Field(default=None)
+    line_code: Optional[str] = Field(default=None)
+    direction: Optional[str] = Field(default=None)
+    current_stop: Optional[str] = Field(default=None)
+    next_stop: Optional[str] = Field(default=None)
+    final_stop: Optional[str] = Field(default=None)
+    train_state: Optional[str] = Field(default=None)
 
-        # 🔹 Contexte transport (fallback, même shape que schemas.py)
-        mode: Optional[str] = Field(default=None)
-        line_code: Optional[str] = Field(default=None)
-        direction: Optional[str] = Field(default=None)
-        current_stop: Optional[str] = Field(default=None)
-        next_stop: Optional[str] = Field(default=None)
-        final_stop: Optional[str] = Field(default=None)
-        train_state: Optional[str] = Field(default=None)
+    # 🔹 Ce qu'on veut ABSOLUMENT : note
+    note: Optional[str] = Field(default=None)
 
-        note: Optional[str] = Field(default=None)
-        photo_url: Optional[str] = Field(default=None)
-        user_id: Optional[str] = Field(default=None)
-        device_id: Optional[str] = Field(default=None)
-        idempotency_key: Optional[str] = Field(default=None)
+    photo_url: Optional[str] = Field(default=None)
+    user_id: Optional[str] = Field(default=None)
+    device_id: Optional[str] = Field(default=None)
+    idempotency_key: Optional[str] = Field(default=None)
+
 
 # rayon pour "même incident" en mètres
 SAME_INCIDENT_RADIUS_M = 25.0
