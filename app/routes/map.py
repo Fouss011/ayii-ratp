@@ -1037,7 +1037,7 @@ async def upload_image(
               FROM reports
              WHERE user_id = :uid
                AND LOWER(TRIM(kind::text))   = :k
-               AND LOWER(TRIM(signal::text)) = 'cut'
+               AND LOWER(TRIM(signal::text)) IN ('cut','to_clean')
                AND created_at > NOW() - INTERVAL '48 hours'
                AND ST_DWithin((geom::geography),(SELECT g FROM me),150)
              LIMIT 1
