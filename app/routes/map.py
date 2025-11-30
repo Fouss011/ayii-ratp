@@ -549,8 +549,8 @@ async def fetch_outages_all(db: AsyncSession, limit: int = 2000):
 
 async def fetch_incidents(db: AsyncSession, lat: float, lng: float, r_m: float):
     """
-    Version ultra simple : chaque report 'to_clean' est un incident.
-    On lit directement dans la table reports, sans jointures compliquées.
+    Version RATP : chaque report 'to_clean' est un incident.
+    On lit directement dans la table reports + on remonte la note (Alepopop) et le contexte train.
     """
     q = text("""
         WITH me AS (
@@ -558,10 +558,18 @@ async def fetch_incidents(db: AsyncSession, lat: float, lng: float, r_m: float):
         )
         SELECT
             r.id,
-            r.kind::text AS kind,
+            r.kind::text   AS kind,
             ST_Y((r.geom::geometry)) AS lat,
             ST_X((r.geom::geometry)) AS lng,
-            r.created_at AS created_at
+            r.created_at   AS created_at,
+            r.note         AS note,
+            r.mode         AS mode,
+            r.line_code    AS line_code,
+            r.direction    AS direction,
+            r.current_stop AS current_stop,
+            r.next_stop    AS next_stop,
+            r.final_stop   AS final_stop,
+            r.train_state  AS train_state
         FROM reports r
         WHERE LOWER(TRIM(r.signal::text)) = 'to_clean'
           AND ST_DWithin((r.geom::geography), (SELECT g FROM me), :r)
@@ -590,22 +598,41 @@ async def fetch_incidents(db: AsyncSession, lat: float, lng: float, r_m: float):
             "restored_at": None,
             "attachments_count": 0,
             "reports_count": 1,
-            "note": None,
+            # 🔹 NOTE Alepopop : ce que ton front sait parser
+            "note": r.note,
+            # 🔹 Bonus : si un jour tu passes en champs structurés
+            "mode": getattr(r, "mode", None),
+            "line_code": getattr(r, "line_code", None),
+            "direction": getattr(r, "direction", None),
+            "current_stop": getattr(r, "current_stop", None),
+            "next_stop": getattr(r, "next_stop", None),
+            "final_stop": getattr(r, "final_stop", None),
+            "train_state": getattr(r, "train_state", None),
         })
     return incidents
+
 
 
 async def fetch_incidents_all(db: AsyncSession, limit: int = 2000):
     """
     show_all=true : tous les reports 'to_clean' récents sont considérés comme incidents.
+    On remonte aussi note + contexte train.
     """
     q = text("""
         SELECT
             r.id,
-            r.kind::text AS kind,
+            r.kind::text   AS kind,
             ST_Y((r.geom::geometry)) AS lat,
             ST_X((r.geom::geometry)) AS lng,
-            r.created_at AS created_at
+            r.created_at   AS created_at,
+            r.note         AS note,
+            r.mode         AS mode,
+            r.line_code    AS line_code,
+            r.direction    AS direction,
+            r.current_stop AS current_stop,
+            r.next_stop    AS next_stop,
+            r.final_stop   AS final_stop,
+            r.train_state  AS train_state
         FROM reports r
         WHERE LOWER(TRIM(r.signal::text)) = 'to_clean'
         ORDER BY r.created_at DESC, r.id DESC
@@ -630,9 +657,17 @@ async def fetch_incidents_all(db: AsyncSession, limit: int = 2000):
             "restored_at": None,
             "attachments_count": 0,
             "reports_count": 1,
-            "note": None,
+            "note": r.note,
+            "mode": getattr(r, "mode", None),
+            "line_code": getattr(r, "line_code", None),
+            "direction": getattr(r, "direction", None),
+            "current_stop": getattr(r, "current_stop", None),
+            "next_stop": getattr(r, "next_stop", None),
+            "final_stop": getattr(r, "final_stop", None),
+            "train_state": getattr(r, "train_state", None),
         })
     return incidents
+
 
 
 # --- Helper pour /map : zones d’alerte via cluster DBSCAN ---
