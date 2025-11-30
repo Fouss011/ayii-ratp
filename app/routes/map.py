@@ -828,11 +828,13 @@ async def reverse(lat: float, lng: float):
 @router.get("/reports_recent")
 async def reports_recent(
     request: Request,
+    limit: int = 200,
     db: AsyncSession = Depends(get_db),
 ):
     import os
     from sqlalchemy import text
 
+    # ✅ Auth admin (header ou query param)
     admin_tok = (os.getenv("ADMIN_TOKEN") or "").strip()
     req_tok = (
         (request.headers.get("x-admin-token") or "")
@@ -841,6 +843,59 @@ async def reports_recent(
     ).strip()
     if not admin_tok or req_tok != admin_tok:
         raise HTTPException(status_code=403, detail="forbidden")
+
+    q = text("""
+        SELECT
+            r.id,
+            r.kind::text   AS kind,
+            r.signal::text AS signal,
+            ST_Y(r.geom::geometry) AS lat,
+            ST_X(r.geom::geometry) AS lng,
+            r.created_at,
+            r.user_id,
+            r.photo_url,
+            r.note,
+            r.mode,
+            r.line_code,
+            r.direction,
+            r.current_stop,
+            r.next_stop,
+            r.final_stop,
+            r.train_state
+        FROM reports r
+        WHERE r.created_at >= NOW() - INTERVAL '48 hours'
+        ORDER BY r.created_at DESC, r.id DESC
+        LIMIT :lim
+    """)
+
+    try:
+        res = await db.execute(q, {"lim": limit})
+        rows = res.fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"reports_recent SQL error: {e}")
+
+    return [
+        {
+            "id":          r.id,
+            "kind":        r.kind,
+            "signal":      r.signal,
+            "lat":         float(r.lat),
+            "lng":         float(r.lng),
+            "created_at":  r.created_at,
+            "user_id":     r.user_id,
+            "photo_url":   r.photo_url,
+            "note":        r.note,
+            "mode":        getattr(r, "mode", None),
+            "line_code":   getattr(r, "line_code", None),
+            "direction":   getattr(r, "direction", None),
+            "current_stop": getattr(r, "current_stop", None),
+            "next_stop":    getattr(r, "next_stop", None),
+            "final_stop":   getattr(r, "final_stop", None),
+            "train_state":  getattr(r, "train_state", None),
+        }
+        for r in rows
+    ]
+
 
 
 
