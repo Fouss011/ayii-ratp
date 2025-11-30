@@ -424,6 +424,9 @@ async def _upload_to_supabase(file_bytes: bytes, filename: str, content_type: st
     return f"{SUPA_URL}/storage/v1/object/public/{BUCKET}/{path}"
 
 # ---------- LECTURES (outages/incidents) ----------
+# ---------------------------------------------------------------------
+# 🔌 OUTAGES AUTOUR D’UN POINT
+# ---------------------------------------------------------------------
 async def fetch_outages(db: AsyncSession, lat: float, lng: float, r_m: float):
     q_full = text(f"""
         WITH me AS (
@@ -458,7 +461,7 @@ async def fetch_outages(db: AsyncSession, lat: float, lng: float, r_m: float):
         WHERE ST_DWithin((o.center::geography), (SELECT g FROM me), :r)
         ORDER BY o.started_at DESC NULLS LAST, o.id DESC
     """)
-    q_min = text(f"""
+    q_min = text("""
         WITH me AS (
           SELECT ST_SetSRID(ST_MakePoint(:lng,:lat),4326)::geography AS g
         )
@@ -495,6 +498,9 @@ async def fetch_outages(db: AsyncSession, lat: float, lng: float, r_m: float):
     ]
 
 
+# ---------------------------------------------------------------------
+# 🔌 OUTAGES GLOBALS (show_all=true)
+# ---------------------------------------------------------------------
 async def fetch_outages_all(db: AsyncSession, limit: int = 2000):
     q = text(f"""
         SELECT o.id,
@@ -502,7 +508,7 @@ async def fetch_outages_all(db: AsyncSession, limit: int = 2000):
                CASE WHEN o.restored_at IS NULL THEN 'active' ELSE 'restored' END AS status,
                ST_Y((o.center::geometry)) AS lat,
                ST_X((o.center::geometry)) AS lng,
-               COALESCE(o.created_at, o.started_at) AS created_at,
+               o.started_at AS created_at,
                o.started_at,
                o.restored_at,
                COALESCE(att.cnt, 0)::int AS attachments_count,
