@@ -60,35 +60,38 @@ async def dashboard_page():
 
     // --- Types propreté RATP ---
     const RATP_KINDS = new Set([
-      'blood',      // sang
+      'blood',         // sang
       'urine',
-      'vomit',      // vomi
-      'excrement',  // excréments
-      'syringe',    // seringue
-      'glass'       // verre/bouteille cassée
+      'vomit',         // vomi
+      'feces',         // excréments
+      'syringe',       // seringue
+      'broken_glass'   // verre / déchet dangereux
     ]);
+
 
     function labelKind(k){
       k = String(k||'').toLowerCase();
-      return k==='blood'     ? 'Sang'
-           : k==='urine'     ? 'Urine'
-           : k==='vomit'     ? 'Vomi'
-           : k==='excrement' ? 'Excréments'
-           : k==='syringe'   ? 'Seringue'
-           : k==='glass'     ? 'Verre / bouteille cassée'
+      return k==='blood'        ? 'Sang'
+           : k==='urine'        ? 'Urine'
+           : k==='vomit'        ? 'Vomi'
+           : k==='feces'        ? 'Excréments'
+           : k==='syringe'      ? 'Seringue'
+           : k==='broken_glass' ? 'Verre / déchet dangereux'
            : 'Autre';
     }
 
+
     function iconKind(k){
       k = String(k||'').toLowerCase();
-      return k==='blood'     ? '🩸'
-           : k==='urine'     ? '🚻'
-           : k==='vomit'     ? '🤢'
-           : k==='excrement' ? '💩'
-           : k==='syringe'   ? '💉'
-           : k==='glass'     ? '🥃'
+      return k==='blood'        ? '🩸'
+           : k==='urine'        ? '🚻'
+           : k==='vomit'        ? '🤢'
+           : k==='feces'        ? '💩'
+           : k==='syringe'      ? '💉'
+           : k==='broken_glass' ? '🧪'
            : '•';
     }
+
 
     // Gravité (front-only, adaptée propreté)
     function severityScore(x){
@@ -100,13 +103,14 @@ async def dashboard_page():
 
       // Poids par type (propreté)
       const W = {
-        blood:     30,
-        syringe:   30,
-        excrement: 22,
-        glass:     18,
-        vomit:     14,
-        urine:     10
+        blood:       30,
+        syringe:     30,
+        feces:       22,
+        broken_glass:18,
+        vomit:       14,
+        urine:       10
       };
+
 
       let s = W[kind] ?? 8;
 
@@ -333,9 +337,9 @@ async def dashboard_page():
               <option value="blood">Sang</option>
               <option value="urine">Urine</option>
               <option value="vomit">Vomi</option>
-              <option value="excrement">Excréments</option>
+              <option value="feces">Excréments</option>
               <option value="syringe">Seringue</option>
-              <option value="glass">Verre / bouteille cassée</option>
+              <option value="broken_glass">Verre / déchet dangereux</option>
             </select>
           </div>
           <div>

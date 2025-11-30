@@ -65,9 +65,10 @@ async def dashboard_pro():
               <option value="blood">Sang</option>
               <option value="urine">Urine</option>
               <option value="vomit">Vomi</option>
-              <option value="excrement">Excréments</option>
+              <option value="feces">Excréments</option>
               <option value="syringe">Seringue</option>
-              <option value="glass">Verre / bouteille cassée</option>
+              <option value="broken_glass">Verre / bouteille cassée</option>
+
             </select>
             <button id="reloadTS" class="btn">Rafraîchir</button>
           </div>
@@ -106,14 +107,15 @@ async def dashboard_pro():
   const api = (p)=> p.startsWith("http")?p:(location.origin+p);
 
   // Types propreté
-  const RATP_KINDS = new Set([
+    const RATP_KINDS = new Set([
     'blood',
     'urine',
     'vomit',
-    'excrement',
+    'feces',
     'syringe',
-    'glass'
+    'broken_glass'
   ]);
+
 
   // focus_id éventuel (pour pointer un ID depuis la carte / autre écran)
   const urlParams = new URLSearchParams(location.search);
@@ -200,11 +202,12 @@ async def dashboard_pro():
     const W={
       blood:30,
       syringe:30,
-      excrement:22,
-      glass:18,
+      feces:22,
+      broken_glass:18,
       vomit:14,
       urine:10
     };
+
     let s=W[kind] ?? 8;
     if(ageMin<=5)      s+=25;
     else if(ageMin<=15)s+=18;
