@@ -368,44 +368,63 @@ async def close_nearest_outage_on_restored(
 # -----------------------------------------------------------------------------
 # Incidents : upsert/clear + TTL
 # -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Incidents : upsert simple (RATP propreté)
+# -----------------------------------------------------------------------------
 async def upsert_incident_from_report(
     db: AsyncSession, kind: str, lat: float, lng: float
 ) -> str:
     """
-    'cut' -> on fusionne à 300 m, sinon on crée un incident actif.
-    Log : "[incident] merge->update id=..." ou "[incident] created id=..."
+    Pour la RATP :
+    - on cherche un incident EXISTANT du même kind dans un rayon donné
+    - s'il existe -> on réutilise son id
+    - sinon -> on crée une nouvelle ligne dans incidents(kind, center, started_at, restored_at)
     """
-    q = text("""
+
+    merge_m = float(INCIDENT_MERGE_METERS)
+
+    # 1) Chercher un incident existant proche
+    q_cand = text("""
         WITH me AS (
           SELECT ST_SetSRID(ST_MakePoint(:lng,:lat),4326)::geography AS g
-        ),
-        cand AS (
-          SELECT id
-            FROM incidents
-           WHERE kind::text = :kind AND active=true
-             AND ST_DWithin(center, (SELECT g FROM me), CAST(:merge_m AS double precision))
-           ORDER BY center::geometry <-> (SELECT g::geometry FROM me)
-           LIMIT 1
-        ),
-        upd AS (
-          UPDATE incidents i
-             SET last_report_at = NOW()
-            FROM cand
-           WHERE i.id = cand.id
-          RETURNING i.id
         )
-        INSERT INTO incidents (kind, center, active, created_at, last_report_at)
-        SELECT :kind, (SELECT g FROM me), true, NOW(), NOW()
-        WHERE NOT EXISTS (SELECT 1 FROM upd)
-        RETURNING id
-    """).bindparams(bindparam("merge_m", type_=Float))
+        SELECT id
+          FROM incidents
+         WHERE kind::text = :kind
+           AND restored_at IS NULL
+           AND ST_DWithin(center, (SELECT g FROM me), :merge_m)
+         ORDER BY started_at DESC NULLS LAST, id DESC
+         LIMIT 1
+    """)
 
-    res = await db.execute(q, {"kind": kind, "lat": lat, "lng": lng, "merge_m": float(INCIDENT_MERGE_METERS)})
-    row = res.scalar_one()
-    # On ne sait pas si ça vient de upd ou insert (au niveau SQL), log “générique” :
+    res = await db.execute(
+        q_cand,
+        {"kind": kind, "lat": lat, "lng": lng, "merge_m": merge_m},
+    )
+    row = res.first()
+    if row:
+        # On réutilise l'incident existant
+        return str(row.id)
+
+    # 2) Sinon : créer un nouvel incident
+    q_ins = text("""
+        WITH me AS (
+          SELECT ST_SetSRID(ST_MakePoint(:lng,:lat),4326)::geography AS g
+        )
+        INSERT INTO incidents (kind, center, started_at, restored_at)
+        VALUES (:kind, (SELECT g FROM me), NOW(), NULL)
+        RETURNING id
+    """)
+
+    res2 = await db.execute(
+        q_ins,
+        {"kind": kind, "lat": lat, "lng": lng},
+    )
+    new_id = res2.scalar_one()
     if LOG_AGG:
-        print(f"[incident] upsert(kind={kind}) -> id={row} (merge<= {INCIDENT_MERGE_METERS}m)")
-    return row
+        print(f"[incident] created kind={kind} -> id={new_id}")
+    return str(new_id)
+
 
 async def clear_nearest_incident(
     db: AsyncSession, kind: str, lat: float, lng: float
