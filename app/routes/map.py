@@ -828,19 +828,14 @@ async def reports_recent(
     from sqlalchemy import text
 
     admin_tok = (os.getenv("ADMIN_TOKEN") or "").strip()
-    req_tok = (request.headers.get("x-admin-token") or "").strip()
+    req_tok = (
+        (request.headers.get("x-admin-token") or "")
+        or (request.query_params.get("x-admin-token") or "")
+        or (request.query_params.get("token") or "")
+    ).strip()
     if not admin_tok or req_tok != admin_tok:
         raise HTTPException(status_code=403, detail="forbidden")
 
-    rs = await db.execute(text("""
-        SELECT id, kind, signal, ST_Y(geom::geometry) AS lat, ST_X(geom::geometry) AS lng,
-               user_id, created_at, phone
-        FROM reports
-        ORDER BY created_at DESC
-        LIMIT 100
-    """))
-    rows = rs.mappings().all()
-    return [dict(r) for r in rows]
 
 
 # --------- Admin: factory reset ----------
