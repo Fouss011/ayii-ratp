@@ -134,13 +134,30 @@ async def dashboard_page():
       return `<span class="chip" style="background:${bg};color:${fg};border:1px solid rgba(0,0,0,.06)">Gravité ${label} (${score})</span>`;
     }
 
-    const api = {
-      // ⚠️ on reste sur /cta/incidents_v2 mais on filtrera côté front
+      const api = {
+      // ⚠️ on utilise maintenant /reports_recent pour la liste
       incidents:(token,{status,limit})=>{
-        const u=new URL('/cta/incidents_v2', location.origin);
-        if(status) u.searchParams.set('status',status);
-        u.searchParams.set('limit', limit||100);
-        return fetch(u, {headers:{'x-admin-token':token}}).then(r=>r.json());
+        const u = new URL('/reports_recent', location.origin);
+        u.searchParams.set('limit', limit || 200);
+        return fetch(u, { headers:{'x-admin-token':token} })
+          .then(r => r.json())
+          .then(arr => {
+            const items = Array.isArray(arr) ? arr.map(x => ({
+              id: x.id,
+              kind: x.kind,
+              status: 'new',                  // tous considérés "new"
+              lat: x.lat,
+              lng: x.lng,
+              created_at: x.created_at,
+              photo_url: x.photo_url,
+              phone: x.phone,
+              note: x.note,
+              age_min: x.age_min ?? null,
+              reports_count: 1,
+              attachments_count: x.photo_url ? 1 : 0,
+            })) : [];
+            return { items };
+          });
       },
       mark:(token,id,newStatus)=>{
         return fetch('/cta/mark_status',{
@@ -150,6 +167,7 @@ async def dashboard_page():
         }).then(r=>r.json());
       }
     };
+
 
     const state = {
       items: [],

@@ -283,12 +283,27 @@ async def dashboard_pro():
       </div>`;
   }
 
-  async function loadIncidents(){
+    async function loadIncidents(){
     try{
-      const s=$("#status").value;
-      const j=await getJSON(api(`/cta/incidents_v2?status=${encodeURIComponent(s)}&limit=50`));
-      const items = (j.items || []).slice()
-        .sort((a,b)=> (Date.parse(b.created_at||0)||0) - (Date.parse(a.created_at||0)||0));
+      // on ignore le filtre "status" côté backend, tout est "new"
+      const j = await getJSON(api('/reports_recent?limit=200'));
+      const raw = Array.isArray(j) ? j : [];
+
+      const items = raw
+        .filter(it => RATP_KINDS.has(String(it.kind||'').toLowerCase()))
+        .map(it => ({
+          ...it,
+          status: 'new',
+          age_min: it.age_min ?? null,
+          reports_count: 1,
+          attachments_count: it.photo_url ? 1 : 0,
+        }))
+        .sort(
+          (a,b) =>
+            (Date.parse(b.created_at||0)||0) -
+            (Date.parse(a.created_at||0)||0)
+        );
+
       renderIncidents(items);
 
       if (focusId) {
@@ -301,6 +316,7 @@ async def dashboard_pro():
       }
     }catch(e){ console.error(e); }
   }
+
 
   $("#reloadTS").onclick=loadTimeseries;
   $("#reloadInc").onclick=loadIncidents;
