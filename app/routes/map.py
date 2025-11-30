@@ -541,146 +541,114 @@ async def fetch_outages_all(db: AsyncSession, limit: int = 2000):
         } for r in rows
     ]
 
-
 async def fetch_incidents(db: AsyncSession, lat: float, lng: float, r_m: float):
-    q_full = text(f"""
+    """
+    Version RATP : on lit directement les reports 'to_clean' comme des incidents.
+    Chaque report = 1 'incident' sur la carte.
+    """
+    q = text("""
         WITH me AS (
           SELECT ST_SetSRID(ST_MakePoint(:lng,:lat),4326)::geography AS g
         )
-        SELECT i.id,
-               i.kind::text AS kind,
-               CASE WHEN i.restored_at IS NULL THEN 'active' ELSE 'restored' END AS status,
-               ST_Y((i.center::geometry)) AS lat,
-               ST_X((i.center::geometry)) AS lng,
-               COALESCE(i.created_at, i.started_at) AS created_at,
-               i.started_at,
-               i.restored_at,
-               COALESCE(att.cnt, 0)::int AS attachments_count,
-               COALESCE(rep.cnt, 0)::int AS reports_count,
-               info.note_text AS note
-        FROM incidents i
+        SELECT
+            r.id,
+            r.kind::text AS kind,
+            'active' AS status,
+            ST_Y((r.geom::geometry)) AS lat,
+            ST_X((r.geom::geometry)) AS lng,
+            r.created_at AS created_at,
+            r.created_at AS started_at,
+            NULL::timestamp AS restored_at,
+            COALESCE(att.cnt, 0)::int AS attachments_count,
+            1::int AS reports_count,
+            r.note::text AS note_text
+        FROM reports r
         LEFT JOIN LATERAL (
           SELECT COUNT(*)::int AS cnt
             FROM attachments a
-           WHERE a.kind::text = i.kind::text
+           WHERE a.kind::text = r.kind::text
              AND a.created_at > NOW() - INTERVAL '48 hours'
-             AND ST_DWithin((a.geom::geography), (i.center::geography), 120)
+             AND ST_DWithin((a.geom::geography), (r.geom::geography), 120)
         ) att ON TRUE
-        LEFT JOIN LATERAL (
-          SELECT COUNT(*)::int AS cnt
-            FROM reports r
-           WHERE LOWER(TRIM(r.signal::text)) = 'to_clean'
-             AND r.created_at > NOW() - INTERVAL '{POINTS_WINDOW_MIN} minutes'
-             AND r.kind::text = i.kind::text
-             AND ST_DWithin((r.geom::geography), (i.center::geography), 120)
-        ) rep ON TRUE
-        LEFT JOIN LATERAL (
-          SELECT r.note::text AS note_text
-            FROM reports r
-           WHERE r.kind::text = i.kind::text
-             AND r.note IS NOT NULL
-             AND ST_DWithin((r.geom::geography), (i.center::geography), 120)
-           ORDER BY r.created_at ASC
-           LIMIT 1
-        ) info ON TRUE
-        WHERE ST_DWithin((i.center::geography), (SELECT g FROM me), :r)
-        ORDER BY i.started_at DESC NULLS LAST, i.id DESC
+        WHERE LOWER(TRIM(r.signal::text)) = 'to_clean'
+          AND ST_DWithin((r.geom::geography), (SELECT g FROM me), :r)
+        ORDER BY r.created_at DESC, r.id DESC
+        LIMIT :lim
     """)
-    q_min = text("""
-        WITH me AS (
-          SELECT ST_SetSRID(ST_MakePoint(:lng,:lat),4326)::geography AS g
-        )
-        SELECT i.id,
-               i.kind::text AS kind,
-               CASE WHEN i.restored_at IS NULL THEN 'active' ELSE 'restored' END AS status,
-               ST_Y((i.center::geometry)) AS lat,
-               ST_X((i.center::geometry)) AS lng,
-               COALESCE(i.created_at, i.started_at) AS created_at,
-               i.started_at,
-               i.restored_at,
-               0::int AS attachments_count,
-               0::int AS reports_count,
-               NULL::text AS note_text
-        FROM incidents i
-        WHERE ST_DWithin((i.center::geography), (SELECT g FROM me), :r)
-        ORDER BY i.started_at DESC NULLS LAST, i.id DESC
-    """)
-    try:
-        res = await db.execute(q_full, {"lng": lng, "lat": lat, "r": r_m})
-    except Exception:
-        await db.rollback()
-        res = await db.execute(q_min, {"lng": lng, "lat": lat, "r": r_m})
+
+    res = await db.execute(q, {"lng": lng, "lat": lat, "r": r_m, "lim": MAX_REPORTS})
     rows = res.fetchall()
+
     return [
         {
-            "id": r.id, "kind": r.kind, "status": r.status,
-            "lat": float(r.lat), "lng": float(r.lng),
+            "id": r.id,
+            "kind": r.kind,
+            "status": r.status,
+            "lat": float(r.lat),
+            "lng": float(r.lng),
             "created_at": getattr(r, "created_at", None),
             "started_at": getattr(r, "started_at", None),
             "restored_at": getattr(r, "restored_at", None),
             "attachments_count": getattr(r, "attachments_count", 0),
             "reports_count": getattr(r, "reports_count", 0),
             "note": getattr(r, "note_text", None),
-        } for r in rows
+        }
+        for r in rows
     ]
 
 
-
 async def fetch_incidents_all(db: AsyncSession, limit: int = 2000):
-    q = text(f"""
-        SELECT i.id,
-               i.kind::text AS kind,
-               CASE WHEN i.restored_at IS NULL THEN 'active' ELSE 'restored' END AS status,
-               ST_Y((i.center::geometry)) AS lat,
-               ST_X((i.center::geometry)) AS lng,
-               COALESCE(i.created_at, i.started_at) AS created_at,
-               i.started_at,
-               i.restored_at,
-               COALESCE(att.cnt, 0)::int AS attachments_count,
-               COALESCE(rep.cnt, 0)::int AS reports_count,
-               info.note_text AS note
-        FROM incidents i
+    """
+    Version globale : tous les reports 'to_clean' récents sont considérés comme incidents.
+    Utilisé si show_all=true.
+    """
+    q = text("""
+        SELECT
+            r.id,
+            r.kind::text AS kind,
+            'active' AS status,
+            ST_Y((r.geom::geometry)) AS lat,
+            ST_X((r.geom::geometry)) AS lng,
+            r.created_at AS created_at,
+            r.created_at AS started_at,
+            NULL::timestamp AS restored_at,
+            COALESCE(att.cnt, 0)::int AS attachments_count,
+            1::int AS reports_count,
+            r.note::text AS note_text
+        FROM reports r
         LEFT JOIN LATERAL (
           SELECT COUNT(*)::int AS cnt
             FROM attachments a
-           WHERE a.kind::text = i.kind::text
+           WHERE a.kind::text = r.kind::text
              AND a.created_at > NOW() - INTERVAL '48 hours'
-             AND ST_DWithin((a.geom::geography), (i.center::geography), 120)
+             AND ST_DWithin((a.geom::geography), (r.geom::geography), 120)
         ) att ON TRUE
-        LEFT JOIN LATERAL (
-          SELECT COUNT(*)::int AS cnt
-            FROM reports r
-           WHERE LOWER(TRIM(r.signal::text)) = 'to_clean'
-             AND r.created_at > NOW() - INTERVAL '{POINTS_WINDOW_MIN} minutes'
-             AND r.kind::text = i.kind::text
-             AND ST_DWithin((r.geom::geography), (i.center::geography), 120)
-        ) rep ON TRUE
-        LEFT JOIN LATERAL (
-          SELECT r.note::text AS note_text
-            FROM reports r
-           WHERE r.kind::text = i.kind::text
-             AND r.note IS NOT NULL
-             AND ST_DWithin((r.geom::geography), (i.center::geography), 120)
-           ORDER BY r.created_at ASC
-           LIMIT 1
-        ) info ON TRUE
-        WHERE i.restored_at IS NULL
-        ORDER BY i.started_at DESC NULLS LAST, i.id DESC
+        WHERE LOWER(TRIM(r.signal::text)) = 'to_clean'
+        ORDER BY r.created_at DESC, r.id DESC
         LIMIT :lim
     """)
-    res = await db.execute(q, {"lim": limit})
+
+    res = await db.execute(
+        q,
+        {"lim": min(limit, MAX_REPORTS)},
+    )
     rows = res.fetchall()
+
     return [
         {
-            "id": r.id, "kind": r.kind, "status": r.status,
-            "lat": float(r.lat), "lng": float(r.lng),
+            "id": r.id,
+            "kind": r.kind,
+            "status": r.status,
+            "lat": float(r.lat),
+            "lng": float(r.lng),
             "created_at": getattr(r, "created_at", None),
             "started_at": getattr(r, "started_at", None),
             "restored_at": getattr(r, "restored_at", None),
             "attachments_count": getattr(r, "attachments_count", 0),
             "reports_count": getattr(r, "reports_count", 0),
             "note": getattr(r, "note_text", None),
-        } for r in rows
+        }
+        for r in rows
     ]
 
 
