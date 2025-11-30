@@ -599,8 +599,7 @@ async def fetch_incidents(db: AsyncSession, lat: float, lng: float, r_m: float):
 
 async def fetch_incidents_all(db: AsyncSession, limit: int = 2000):
     """
-    Version globale : tous les reports 'to_clean' récents sont considérés comme incidents.
-    Utilisé si show_all=true.
+    show_all=true : tous les reports 'to_clean' récents sont considérés comme incidents.
     """
     q = text("""
         SELECT
@@ -628,10 +627,7 @@ async def fetch_incidents_all(db: AsyncSession, limit: int = 2000):
         LIMIT :lim
     """)
 
-    res = await db.execute(
-        q,
-        {"lim": min(limit, MAX_REPORTS)},
-    )
+    res = await db.execute(q, {"lim": min(limit, MAX_REPORTS)})
     rows = res.fetchall()
 
     return [
@@ -837,6 +833,10 @@ async def map_view(
             "error": f"{type(e).__name__}: {e}",
         }
 
+@router.get("/reverse")
+async def reverse(lat: float, lng: float):
+    # Stub simple : renvoie juste les coordonnées
+    return {"ok": True, "label": f"{lat:.5f}, {lng:.5f}"}
 
 
 @router.get("/reports_recent")
