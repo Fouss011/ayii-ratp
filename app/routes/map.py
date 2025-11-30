@@ -543,8 +543,8 @@ async def fetch_outages_all(db: AsyncSession, limit: int = 2000):
 
 async def fetch_incidents(db: AsyncSession, lat: float, lng: float, r_m: float):
     """
-    Version RATP : on lit directement les reports 'to_clean' comme des incidents.
-    Chaque report = 1 'incident' sur la carte.
+    Version ultra simple : chaque report 'to_clean' est un incident.
+    On lit directement dans la table reports, sans jointures compliquées.
     """
     q = text("""
         WITH me AS (
@@ -553,48 +553,40 @@ async def fetch_incidents(db: AsyncSession, lat: float, lng: float, r_m: float):
         SELECT
             r.id,
             r.kind::text AS kind,
-            'active' AS status,
             ST_Y((r.geom::geometry)) AS lat,
             ST_X((r.geom::geometry)) AS lng,
-            r.created_at AS created_at,
-            r.created_at AS started_at,
-            NULL::timestamp AS restored_at,
-            COALESCE(att.cnt, 0)::int AS attachments_count,
-            1::int AS reports_count,
-            r.note::text AS note_text
+            r.created_at AS created_at
         FROM reports r
-        LEFT JOIN LATERAL (
-          SELECT COUNT(*)::int AS cnt
-            FROM attachments a
-           WHERE a.kind::text = r.kind::text
-             AND a.created_at > NOW() - INTERVAL '48 hours'
-             AND ST_DWithin((a.geom::geography), (r.geom::geography), 120)
-        ) att ON TRUE
         WHERE LOWER(TRIM(r.signal::text)) = 'to_clean'
           AND ST_DWithin((r.geom::geography), (SELECT g FROM me), :r)
         ORDER BY r.created_at DESC, r.id DESC
         LIMIT :lim
     """)
 
-    res = await db.execute(q, {"lng": lng, "lat": lat, "r": r_m, "lim": MAX_REPORTS})
+    res = await db.execute(q, {
+        "lng": float(lng),
+        "lat": float(lat),
+        "r": float(r_m),
+        "lim": MAX_REPORTS,
+    })
     rows = res.fetchall()
 
-    return [
-        {
+    incidents = []
+    for r in rows:
+        incidents.append({
             "id": r.id,
             "kind": r.kind,
-            "status": r.status,
+            "status": "active",
             "lat": float(r.lat),
             "lng": float(r.lng),
             "created_at": getattr(r, "created_at", None),
-            "started_at": getattr(r, "started_at", None),
-            "restored_at": getattr(r, "restored_at", None),
-            "attachments_count": getattr(r, "attachments_count", 0),
-            "reports_count": getattr(r, "reports_count", 0),
-            "note": getattr(r, "note_text", None),
-        }
-        for r in rows
-    ]
+            "started_at": getattr(r, "created_at", None),
+            "restored_at": None,
+            "attachments_count": 0,
+            "reports_count": 1,
+            "note": None,
+        })
+    return incidents
 
 
 async def fetch_incidents_all(db: AsyncSession, limit: int = 2000):
@@ -605,48 +597,36 @@ async def fetch_incidents_all(db: AsyncSession, limit: int = 2000):
         SELECT
             r.id,
             r.kind::text AS kind,
-            'active' AS status,
             ST_Y((r.geom::geometry)) AS lat,
             ST_X((r.geom::geometry)) AS lng,
-            r.created_at AS created_at,
-            r.created_at AS started_at,
-            NULL::timestamp AS restored_at,
-            COALESCE(att.cnt, 0)::int AS attachments_count,
-            1::int AS reports_count,
-            r.note::text AS note_text
+            r.created_at AS created_at
         FROM reports r
-        LEFT JOIN LATERAL (
-          SELECT COUNT(*)::int AS cnt
-            FROM attachments a
-           WHERE a.kind::text = r.kind::text
-             AND a.created_at > NOW() - INTERVAL '48 hours'
-             AND ST_DWithin((a.geom::geography), (r.geom::geography), 120)
-        ) att ON TRUE
         WHERE LOWER(TRIM(r.signal::text)) = 'to_clean'
         ORDER BY r.created_at DESC, r.id DESC
         LIMIT :lim
     """)
 
-    res = await db.execute(q, {"lim": min(limit, MAX_REPORTS)})
+    res = await db.execute(q, {
+        "lim": min(limit, MAX_REPORTS),
+    })
     rows = res.fetchall()
 
-    return [
-        {
+    incidents = []
+    for r in rows:
+        incidents.append({
             "id": r.id,
             "kind": r.kind,
-            "status": r.status,
+            "status": "active",
             "lat": float(r.lat),
             "lng": float(r.lng),
             "created_at": getattr(r, "created_at", None),
-            "started_at": getattr(r, "started_at", None),
-            "restored_at": getattr(r, "restored_at", None),
-            "attachments_count": getattr(r, "attachments_count", 0),
-            "reports_count": getattr(r, "reports_count", 0),
-            "note": getattr(r, "note_text", None),
-        }
-        for r in rows
-    ]
-
+            "started_at": getattr(r, "created_at", None),
+            "restored_at": None,
+            "attachments_count": 0,
+            "reports_count": 1,
+            "note": None,
+        })
+    return incidents
 
 
 # --- Helper pour /map : zones d’alerte via cluster DBSCAN ---
