@@ -15,10 +15,8 @@ def _auth_admin(request: Request):
         raise HTTPException(status_code=401, detail="invalid admin token")
 
 # -----------------------------
-# V2 (phone + URL d'une pièce jointe du même kind)
+# V2 (phone + média lié au report + stats)
 # -----------------------------
-# app/routes/cta.py
-
 @router.get("/incidents_v2")
 async def cta_incidents_v2(
     request: Request,
@@ -34,6 +32,7 @@ async def cta_incidents_v2(
         else ""
     )
 
+    # ⚠️ On ne garde que les reports "to_clean" (propreté RATP)
     sql = f"""
     SELECT
       r.id,
@@ -43,21 +42,46 @@ async def cta_incidents_v2(
       ST_X(r.geom::geometry) AS lng,
       r.created_at,
       COALESCE(r.status,'new') AS status,
-      r.phone,                       -- téléphone saisi dans le report
+      r.phone,  -- téléphone saisi dans le report
 
-      -- 📎 Pièce jointe la plus récente, même kind + proche du report
+      -- 📎 Dernier média lié à CE report (image ou vidéo)
       (
         SELECT a.url
         FROM attachments a
-        WHERE a.kind = r.kind::text
-          AND ST_DWithin(a.geom::geometry, r.geom::geometry, 60)  -- ~60 m
+        WHERE a.report_id = r.id
         ORDER BY a.created_at DESC
         LIMIT 1
       ) AS photo_url,
 
+      (
+        SELECT a.mime_type
+        FROM attachments a
+        WHERE a.report_id = r.id
+        ORDER BY a.created_at DESC
+        LIMIT 1
+      ) AS mime_type,
+
+      -- 📊 Nombre de pièces jointes sur ce report
+      (
+        SELECT COUNT(*)::int
+        FROM attachments a
+        WHERE a.report_id = r.id
+      ) AS attachments_count,
+
+      -- 👥 Nombre de reports proches du même type (même kind, rayon 50 m)
+      (
+        SELECT COUNT(*)::int
+        FROM reports r2
+        WHERE r2.kind = r.kind
+          AND LOWER(TRIM(r2.signal::text)) = 'to_clean'
+          AND ST_DWithin(r2.geom::geography, r.geom::geography, 50)
+      ) AS reports_count,
+
+      -- ⏱ âge en minutes
       EXTRACT(EPOCH FROM (NOW() - r.created_at))::int / 60 AS age_min
+
     FROM reports r
-    WHERE LOWER(TRIM(r.signal::text)) = 'to_clean'   -- ✅ propreté RATP
+    WHERE LOWER(TRIM(r.signal::text)) = 'to_clean'
       {where_status}
     ORDER BY r.created_at DESC
     LIMIT :lim
@@ -73,20 +97,33 @@ async def cta_incidents_v2(
     items = []
     for r in rows:
         m = r._mapping
-        items.append({
-            "id": m["id"],
-            "kind": m["kind"],
-            "signal": m["signal"],
-            "lat": float(m["lat"]),
-            "lng": float(m["lng"]),
-            "created_at": m["created_at"],
-            "status": m["status"],
-            "photo_url": m["photo_url"],   # URL Supabase (image/vidéo) ou null
-            "age_min": int(m["age_min"]) if m["age_min"] is not None else None,
-            "phone": m["phone"],           # ✅ téléphone direct
-        })
+        items.append(
+            {
+                "id": m["id"],
+                "kind": m["kind"],
+                "signal": m["signal"],
+                "lat": float(m["lat"]),
+                "lng": float(m["lng"]),
+                "created_at": m["created_at"],
+                "status": m["status"],
+                "phone": m.get("phone"),
 
-    return {"api_version": "v2-min", "items": items, "count": len(items)}
+                # média
+                "photo_url": m["photo_url"],
+                "mime_type": m.get("mime_type"),
+
+                # stats
+                "attachments_count": int(m["attachments_count"] or 0),
+                "reports_count": int(m["reports_count"] or 0),
+                "age_min": int(m["age_min"]) if m["age_min"] is not None else None,
+            }
+        )
+
+    return {
+        "api_version": "v2-proprete",
+        "items": items,
+        "count": len(items),
+    }
 
 
 # -----------------------------
