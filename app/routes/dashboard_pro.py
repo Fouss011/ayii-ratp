@@ -1,4 +1,3 @@
-# app/routes/dashboard_pro.py
 from __future__ import annotations
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
@@ -68,7 +67,6 @@ async def dashboard_pro():
               <option value="feces">Excréments</option>
               <option value="syringe">Seringue</option>
               <option value="broken_glass">Verre / bouteille cassée</option>
-
             </select>
             <button id="reloadTS" class="btn">Rafraîchir</button>
           </div>
@@ -107,7 +105,7 @@ async def dashboard_pro():
   const api = (p)=> p.startsWith("http")?p:(location.origin+p);
 
   // Types propreté
-    const RATP_KINDS = new Set([
+  const RATP_KINDS = new Set([
     'blood',
     'urine',
     'vomit',
@@ -116,8 +114,7 @@ async def dashboard_pro():
     'broken_glass'
   ]);
 
-
-  // focus_id éventuel (pour pointer un ID depuis la carte / autre écran)
+  // focus_id éventuel
   const urlParams = new URLSearchParams(location.search);
   const focusId = urlParams.get("focus_id") || "";
 
@@ -180,7 +177,6 @@ async def dashboard_pro():
   async function loadPieKind(){
     try{
       const j=await getJSON(api("/metrics/kind_breakdown?days=30"));
-      // backend renvoie déjà uniquement les kinds RATP
       const labels=j.items.map(r=>r.kind);
       const data=j.items.map(r=>r.n);
       if(pieKind) pieKind.destroy();
@@ -228,7 +224,7 @@ async def dashboard_pro():
 
   function fmtAgeMin(m){ return (m==null)? "-" : `${m} min`; }
 
-  // Incidents table (on affiche seulement les kinds RATP)
+  // Incidents table
   function renderIncidents(items){
     const filtered = (items||[]).filter(it =>
       RATP_KINDS.has(String(it.kind||"").toLowerCase())
@@ -283,20 +279,20 @@ async def dashboard_pro():
       </div>`;
   }
 
-    async function loadIncidents(){
+  async function loadIncidents(){
     try{
-      // on ignore le filtre "status" côté backend, tout est "new"
-      const j = await getJSON(api('/reports_recent?limit=200'));
-      const raw = Array.isArray(j) ? j : [];
+      const s=$("#status").value;
+      const j = await getJSON(api(`/cta/incidents_v2?status=${encodeURIComponent(s)}&limit=200`));
+      const raw = Array.isArray(j.items) ? j.items : [];
 
       const items = raw
         .filter(it => RATP_KINDS.has(String(it.kind||'').toLowerCase()))
         .map(it => ({
           ...it,
-          status: 'new',
+          status: it.status || 'new',
           age_min: it.age_min ?? null,
-          reports_count: 1,
-          attachments_count: it.photo_url ? 1 : 0,
+          reports_count: it.reports_count ?? 1,
+          attachments_count: it.attachments_count ?? (it.photo_url ? 1 : 0),
         }))
         .sort(
           (a,b) =>
@@ -316,7 +312,6 @@ async def dashboard_pro():
       }
     }catch(e){ console.error(e); }
   }
-
 
   $("#reloadTS").onclick=loadTimeseries;
   $("#reloadInc").onclick=loadIncidents;

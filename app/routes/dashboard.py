@@ -1,4 +1,3 @@
-# app/routes/dashboard.py
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
@@ -68,7 +67,6 @@ async def dashboard_page():
       'broken_glass'   // verre / déchet dangereux
     ]);
 
-
     function labelKind(k){
       k = String(k||'').toLowerCase();
       return k==='blood'        ? 'Sang'
@@ -79,7 +77,6 @@ async def dashboard_page():
            : k==='broken_glass' ? 'Verre / déchet dangereux'
            : 'Autre';
     }
-
 
     function iconKind(k){
       k = String(k||'').toLowerCase();
@@ -92,7 +89,6 @@ async def dashboard_page():
            : '•';
     }
 
-
     // Gravité (front-only, adaptée propreté)
     function severityScore(x){
       const kind=String(x.kind||'').toLowerCase();
@@ -101,7 +97,6 @@ async def dashboard_page():
       const reports=Number(x.reports_count||0);
       const attach=Number(x.attachments_count||0);
 
-      // Poids par type (propreté)
       const W = {
         blood:       30,
         syringe:     30,
@@ -110,7 +105,6 @@ async def dashboard_page():
         vomit:       14,
         urine:       10
       };
-
 
       let s = W[kind] ?? 8;
 
@@ -134,29 +128,16 @@ async def dashboard_page():
       return `<span class="chip" style="background:${bg};color:${fg};border:1px solid rgba(0,0,0,.06)">Gravité ${label} (${score})</span>`;
     }
 
-      const api = {
-      // ⚠️ on utilise maintenant /reports_recent pour la liste
+    const api = {
+      // 👉 on utilise /cta/incidents_v2
       incidents:(token,{status,limit})=>{
-        const u = new URL('/reports_recent', location.origin);
+        const u = new URL('/cta/incidents_v2', location.origin);
+        if (status) u.searchParams.set('status', status);
         u.searchParams.set('limit', limit || 200);
         return fetch(u, { headers:{'x-admin-token':token} })
-          .then(r => r.json())
-          .then(arr => {
-            const items = Array.isArray(arr) ? arr.map(x => ({
-              id: x.id,
-              kind: x.kind,
-              status: 'new',                  // tous considérés "new"
-              lat: x.lat,
-              lng: x.lng,
-              created_at: x.created_at,
-              photo_url: x.photo_url,
-              phone: x.phone,
-              note: x.note,
-              age_min: x.age_min ?? null,
-              reports_count: 1,
-              attachments_count: x.photo_url ? 1 : 0,
-            })) : [];
-            return { items };
+          .then(r => {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
           });
       },
       mark:(token,id,newStatus)=>{
@@ -167,7 +148,6 @@ async def dashboard_page():
         }).then(r=>r.json());
       }
     };
-
 
     const state = {
       items: [],
@@ -214,7 +194,7 @@ async def dashboard_page():
       // 1) On ne garde QUE les types RATP
       data = data.filter(x => RATP_KINDS.has(String(x.kind||'').toLowerCase()));
 
-      // 2) Filtre "type" (select) éventuel
+      // 2) Filtre "type"
       if (state.filters.kind)
         data = data.filter(x => String(x.kind||'').toLowerCase() === state.filters.kind);
 
@@ -283,14 +263,31 @@ async def dashboard_page():
     }
 
     async function load(){
-      if(!state.token){ $('#auth-status').textContent='Token manquant'; state.items=[]; render(); return; }
+      if(!state.token){
+        $('#auth-status').textContent='Token manquant';
+        state.items=[]; render(); return;
+      }
       $('#auth-status').textContent='Chargement…';
       try{
-        const data=await api.incidents(state.token, {status:state.filters.status, limit:state.filters.limit});
-        state.items=data.items||[];
+        const data = await api.incidents(state.token, {
+          status: state.filters.status,
+          limit: state.filters.limit
+        });
+
+        const items = (data.items || []).map(x => ({
+          ...x,
+          // champs de confort pour la gravité
+          reports_count: x.reports_count ?? 1,
+          attachments_count: x.attachments_count ?? (x.photo_url ? 1 : 0),
+          age_min: x.age_min ?? null,
+        }));
+
+        state.items = items;
         $('#auth-status').textContent='OK';
       }catch(e){
-        state.items=[]; $('#auth-status').textContent='Erreur d’accès (token ?)';
+        console.error(e);
+        state.items=[];
+        $('#auth-status').textContent='Erreur d’accès (token ?)';
       }
       render();
     }
@@ -298,8 +295,17 @@ async def dashboard_page():
     // INIT
     window.addEventListener('DOMContentLoaded', ()=>{
       $('#token').value=state.token; updateExportLinks();
-      $('#btn-save-token').onclick=()=>{ state.token=$('#token').value.trim(); localStorage.setItem('ayii_admin_token',state.token); $('#auth-status').textContent=state.token?'Token enregistré':'Aucun token'; updateExportLinks(); load(); };
-      $('#btn-clear-token').onclick=()=>{ localStorage.removeItem('ayii_admin_token'); state.token=''; $('#token').value=''; updateExportLinks(); render(); };
+      $('#btn-save-token').onclick=()=>{
+        state.token=$('#token').value.trim();
+        localStorage.setItem('ayii_admin_token',state.token);
+        $('#auth-status').textContent=state.token?'Token enregistré':'Aucun token';
+        updateExportLinks(); load();
+      };
+      $('#btn-clear-token').onclick=()=>{
+        localStorage.removeItem('ayii_admin_token');
+        state.token=''; $('#token').value='';
+        updateExportLinks(); render();
+      };
       $('#f-status').onchange=e=>{ state.filters.status=e.target.value; load(); };
       $('#f-kind').onchange  =e=>{ state.filters.kind  =e.target.value; render(); };
       $('#f-limit').onchange =e=>{ state.filters.limit =+e.target.value; load(); };
