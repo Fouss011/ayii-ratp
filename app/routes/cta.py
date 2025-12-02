@@ -17,6 +17,8 @@ def _auth_admin(request: Request):
 # -----------------------------
 # V2 (phone + URL d'une pièce jointe du même kind)
 # -----------------------------
+# app/routes/cta.py
+
 @router.get("/incidents_v2")
 async def cta_incidents_v2(
     request: Request,
@@ -41,17 +43,21 @@ async def cta_incidents_v2(
       ST_X(r.geom::geometry) AS lng,
       r.created_at,
       COALESCE(r.status,'new') AS status,
-      r.phone,                       -- téléphone
+      r.phone,                       -- téléphone saisi dans le report
+
+      -- 📎 Pièce jointe la plus récente, même kind + proche du report
       (
         SELECT a.url
         FROM attachments a
         WHERE a.kind = r.kind::text
+          AND ST_DWithin(a.geom::geometry, r.geom::geometry, 60)  -- ~60 m
         ORDER BY a.created_at DESC
         LIMIT 1
-      ) AS photo_url,                -- image OU vidéo la plus récente pour ce kind
+      ) AS photo_url,
+
       EXTRACT(EPOCH FROM (NOW() - r.created_at))::int / 60 AS age_min
     FROM reports r
-    WHERE LOWER(TRIM(r.signal::text)) = 'cut'
+    WHERE LOWER(TRIM(r.signal::text)) = 'to_clean'   -- ✅ propreté RATP
       {where_status}
     ORDER BY r.created_at DESC
     LIMIT :lim
@@ -77,9 +83,11 @@ async def cta_incidents_v2(
             "status": m["status"],
             "photo_url": m["photo_url"],   # URL Supabase (image/vidéo) ou null
             "age_min": int(m["age_min"]) if m["age_min"] is not None else None,
-            "phone": m.get("phone"),
+            "phone": m["phone"],           # ✅ téléphone direct
         })
+
     return {"api_version": "v2-min", "items": items, "count": len(items)}
+
 
 # -----------------------------
 # ALIAS /cta/incidents → même réponse que V2
