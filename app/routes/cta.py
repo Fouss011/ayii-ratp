@@ -46,16 +46,36 @@ async def cta_incidents_v2(
       COALESCE(r.status,'new') AS status,
       r.phone,
 
-      -- Dernier média pour ce type (kind) — image/vidéo
+      -- 📎 Média du même type, proche géographiquement et récent
       (
         SELECT a.url
         FROM attachments a
         WHERE a.kind = r.kind::text
+          AND a.created_at > r.created_at - interval '6 hours'
+          AND ST_DWithin(a.geom::geography, r.geom::geography, 50)
         ORDER BY a.created_at DESC
         LIMIT 1
       ) AS photo_url,
 
-      -- âge en minutes
+      -- 📊 Nombre de pièces jointes proches (même logique)
+      (
+        SELECT COUNT(*)::int
+        FROM attachments a
+        WHERE a.kind = r.kind::text
+          AND a.created_at > r.created_at - interval '6 hours'
+          AND ST_DWithin(a.geom::geography, r.geom::geography, 50)
+      ) AS attachments_count,
+
+      -- 👥 Nombre de reports proches du même type (rayon ~50 m)
+      (
+        SELECT COUNT(*)::int
+        FROM reports r2
+        WHERE r2.kind = r.kind
+          AND LOWER(TRIM(r2.signal::text)) = 'to_clean'
+          AND ST_DWithin(r2.geom::geography, r.geom::geography, 50)
+      ) AS reports_count,
+
+      -- ⏱ âge en minutes
       EXTRACT(EPOCH FROM (NOW() - r.created_at))::int / 60 AS age_min
 
     FROM reports r
@@ -86,12 +106,14 @@ async def cta_incidents_v2(
                 "status": m["status"],
                 "phone": m.get("phone"),
                 "photo_url": m["photo_url"],
+                "attachments_count": int(m["attachments_count"] or 0),
+                "reports_count": int(m["reports_count"] or 0),
                 "age_min": int(m["age_min"]) if m["age_min"] is not None else None,
             }
         )
 
     return {
-        "api_version": "v2-stable",
+        "api_version": "v2-proprete",
         "items": items,
         "count": len(items),
     }
