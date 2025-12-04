@@ -125,7 +125,7 @@ RESPONDER_TOKEN  = (os.getenv("RESPONDER_TOKEN") or "").strip()  # jeton simple 
 
 ALLOWED_KINDS = {
     # 🔹 Propreté RATP
-    "urine", "vomit", "feces", "blood", "syringe", "broken_glass",
+    "urine", "vomit", "feces", "blood", "syringe", "broken_glass", "smoker", "fight", "sexual_assault",
     # 🔹 Anciens types Ayii (au cas où le front les appelle encore)
     "traffic", "accident", "fire", "flood", "power", "water",
     "assault", "weapon", "medical",
@@ -193,7 +193,7 @@ async def upload_video(
     # ✅ normalisation du kind (TRÈS IMPORTANT)
     K = (kind or "").strip().lower()
     # pour la version propreté RATP, on accepte les 6 types suivants :
-    allowed_kinds = {"urine", "vomit", "feces", "blood", "syringe", "broken_glass"}
+    allowed_kinds = {"urine", "vomit", "feces", "blood", "syringe", "broken_glass", "smoker", "fight", "sexual_assault"}
     if K not in allowed_kinds:
         raise HTTPException(status_code=400, detail="invalid kind")
 

@@ -5,20 +5,16 @@ from sqlalchemy import text
 import os
 from app.db import get_db
 
-# Router CTA (prefix = /cta)
 router = APIRouter(prefix="/cta", tags=["CTA"])
 
 
 def _auth_admin(request: Request):
-    admin_tok = (os.getenv("ADMIN_TOKEN") or "").strip()
-    req_tok = (request.headers.get("x-admin-token") or "").strip()
-    if admin_tok and req_tok != admin_tok:
-        raise HTTPException(status_code=401, detail="invalid admin token")
+  admin_tok = (os.getenv("ADMIN_TOKEN") or "").strip()
+  req_tok = (request.headers.get("x-admin-token") or "").strip()
+  if admin_tok and req_tok != admin_tok:
+      raise HTTPException(status_code=401, detail="invalid admin token")
 
 
-# -----------------------------
-# V2 (phone + photo_url + age_min) — version stable
-# -----------------------------
 @router.get("/incidents_v2")
 async def cta_incidents_v2(
     request: Request,
@@ -34,7 +30,6 @@ async def cta_incidents_v2(
         else ""
     )
 
-    # On ne garde que les reports "to_clean" (propreté)
     sql = f"""
     SELECT
       r.id,
@@ -46,24 +41,20 @@ async def cta_incidents_v2(
       COALESCE(r.status,'new') AS status,
       r.phone,
 
-      -- 📎 Média du même type, proche géographiquement et récent
+      -- 📎 Média lié UNIQUEMENT à ce report
       (
         SELECT a.url
         FROM attachments a
-        WHERE a.kind = r.kind::text
-          AND a.created_at > r.created_at - interval '6 hours'
-          AND ST_DWithin(a.geom::geography, r.geom::geography, 50)
+        WHERE a.report_id = r.id
         ORDER BY a.created_at DESC
         LIMIT 1
       ) AS photo_url,
 
-      -- 📊 Nombre de pièces jointes proches (même logique)
+      -- 📊 Nombre de pièces jointes LIÉES à ce report
       (
         SELECT COUNT(*)::int
         FROM attachments a
-        WHERE a.kind = r.kind::text
-          AND a.created_at > r.created_at - interval '6 hours'
-          AND ST_DWithin(a.geom::geography, r.geom::geography, 50)
+        WHERE a.report_id = r.id
       ) AS attachments_count,
 
       -- 👥 Nombre de reports proches du même type (rayon ~50 m)
@@ -119,9 +110,6 @@ async def cta_incidents_v2(
     }
 
 
-# -----------------------------
-# ALIAS /cta/incidents → même réponse que V2
-# -----------------------------
 @router.get("/incidents")
 async def cta_incidents(
     request: Request,
@@ -129,5 +117,4 @@ async def cta_incidents(
     limit: int = Query(20, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ):
-    # On réutilise EXACTEMENT la V2
     return await cta_incidents_v2(request, status, limit, db)
