@@ -42,24 +42,26 @@ async def cta_incidents_v2(
       COALESCE(r.status,'new') AS status,
       r.phone,
 
-      -- 📎 Média le plus récent de même type, à proximité (~50 m) du report
+      -- 📎 Média le plus récent lié au report (fenêtre serrée autour du report)
       (
         SELECT a.url
         FROM attachments a
         WHERE LOWER(TRIM(a.kind::text)) = LOWER(TRIM(r.kind::text))
-          AND ST_DWithin(a.geom::geography, r.geom::geography, 50)
-          AND a.created_at > r.created_at - INTERVAL '24 hours'
+          AND ST_DWithin(a.geom::geography, r.geom::geography, 30)
+          AND a.created_at BETWEEN r.created_at - INTERVAL '30 seconds'
+                              AND r.created_at + INTERVAL '90 seconds'
         ORDER BY a.created_at DESC
         LIMIT 1
       ) AS photo_url,
 
-      -- 📊 Nombre de pièces jointes de même type à proximité (~50 m)
+      -- 📊 Nombre de pièces jointes liées au report (même fenêtre serrée)
       (
         SELECT COUNT(*)::int
         FROM attachments a
         WHERE LOWER(TRIM(a.kind::text)) = LOWER(TRIM(r.kind::text))
-          AND ST_DWithin(a.geom::geography, r.geom::geography, 50)
-          AND a.created_at > r.created_at - INTERVAL '24 hours'
+          AND ST_DWithin(a.geom::geography, r.geom::geography, 30)
+          AND a.created_at BETWEEN r.created_at - INTERVAL '30 seconds'
+                              AND r.created_at + INTERVAL '90 seconds'
       ) AS attachments_count,
 
       -- 👥 Nombre de reports proches du même type (rayon ~50 m)
@@ -80,6 +82,7 @@ async def cta_incidents_v2(
     ORDER BY r.created_at DESC
     LIMIT :lim
     """
+
 
     params = {"lim": int(limit)}
     if "status" in where_status:
