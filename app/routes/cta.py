@@ -3,10 +3,9 @@ async def cta_incidents_v2(
     request: Request,
     status: str = Query("", description="new|confirmed|resolved"),
     limit: int = Query(20, ge=1, le=200),
-    debug: int = Query(0, description="1 = renvoyer le message d'erreur SQL brut"),
+    debug: int = Query(0, description="1 = renvoyer l'erreur détaillée"),
     db: AsyncSession = Depends(get_db),
 ):
-    # Auth admin
     _auth_admin(request)
 
     where_status = (
@@ -68,35 +67,44 @@ async def cta_incidents_v2(
     try:
         res = await db.execute(text(sql), params)
         rows = res.fetchall()
+
+        items = []
+        for r in rows:
+            m = r._mapping
+
+            # on utilise .get() partout pour éviter les KeyError
+            items.append(
+                {
+                    "id": m.get("id"),
+                    "kind": m.get("kind"),
+                    "signal": m.get("signal"),
+                    "lat": float(m.get("lat")),
+                    "lng": float(m.get("lng")),
+                    "created_at": m.get("created_at"),
+                    "status": m.get("status"),
+                    "phone": m.get("phone"),
+                    "photo_url": m.get("photo_url"),
+                    "attachments_count": int(m.get("attachments_count") or 0),
+                    "reports_count": int(m.get("reports_count") or 0),
+                    "age_min": (
+                        int(m.get("age_min"))
+                        if m.get("age_min") is not None
+                        else None
+                    ),
+                }
+            )
+
+        return {
+            "api_version": "v2-proprete",
+            "items": items,
+            "count": len(items),
+        }
+
     except Exception as e:
-        # 🔍 Mode debug : renvoyer l’erreur brute au client
+        # ici on attrape TOUT : SQL + mapping
         if debug:
-            raise HTTPException(status_code=500, detail=f"cta_incidents_v2 SQL error: {e}")
-        # Mode normal : 500 générique
+            raise HTTPException(
+                status_code=500,
+                detail=f"cta_incidents_v2 error: {e}"
+            )
         raise HTTPException(status_code=500, detail="cta_incidents_v2 error")
-
-    items = []
-    for r in rows:
-        m = r._mapping
-        items.append(
-            {
-                "id": m["id"],
-                "kind": m["kind"],
-                "signal": m["signal"],
-                "lat": float(m["lat"]),
-                "lng": float(m["lng"]),
-                "created_at": m["created_at"],
-                "status": m["status"],
-                "phone": m.get("phone"),
-                "photo_url": m["photo_url"],
-                "attachments_count": int(m["attachments_count"] or 0),
-                "reports_count": int(m["reports_count"] or 0),
-                "age_min": int(m["age_min"]) if m["age_min"] is not None else None,
-            }
-        )
-
-    return {
-        "api_version": "v2-proprete",
-        "items": items,
-        "count": len(items),
-    }
