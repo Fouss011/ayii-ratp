@@ -42,20 +42,24 @@ async def cta_incidents_v2(
       COALESCE(r.status,'new') AS status,
       r.phone,
 
-      -- 📎 Média lié UNIQUEMENT à ce report
+      -- 📎 Média le plus récent de même type, à proximité (~50 m) du report
       (
         SELECT a.url
         FROM attachments a
-        WHERE a.report_id = r.id
+        WHERE LOWER(TRIM(a.kind::text)) = LOWER(TRIM(r.kind::text))
+          AND ST_DWithin(a.geom::geography, r.geom::geography, 50)
+          AND a.created_at > r.created_at - INTERVAL '24 hours'
         ORDER BY a.created_at DESC
         LIMIT 1
       ) AS photo_url,
 
-      -- 📊 Nombre de pièces jointes LIÉES à ce report
+      -- 📊 Nombre de pièces jointes de même type à proximité (~50 m)
       (
         SELECT COUNT(*)::int
         FROM attachments a
-        WHERE a.report_id = r.id
+        WHERE LOWER(TRIM(a.kind::text)) = LOWER(TRIM(r.kind::text))
+          AND ST_DWithin(a.geom::geography, r.geom::geography, 50)
+          AND a.created_at > r.created_at - INTERVAL '24 hours'
       ) AS attachments_count,
 
       -- 👥 Nombre de reports proches du même type (rayon ~50 m)
@@ -122,6 +126,7 @@ async def cta_incidents_v2(
                 detail=f"cta_incidents_v2 error: {e}",
             )
         raise HTTPException(status_code=500, detail="cta_incidents_v2 error")
+
 
 @router.get("/incidents")
 async def cta_incidents(
