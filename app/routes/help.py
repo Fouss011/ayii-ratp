@@ -11,101 +11,114 @@ async def aide():
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <title>Aide – Bien signaler un incident AYii RATP</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; padding: 16px; line-height: 1.5; color: #111827; }
-    h1 { font-size: 1.5rem; margin-bottom: 0.75rem; }
-    h2 { font-size: 1.1rem; margin-top: 1.25rem; margin-bottom: 0.5rem; }
-    ul { padding-left: 1.1rem; }
-    li { margin-bottom: 0.25rem; }
-    strong { font-weight: 600; }
-    .tag { display: inline-block; background: #f3f4f6; padding: 2px 6px; border-radius: 999px; font-size: 0.85rem; margin-right: 4px; }
-  </style>
+  <title>AYii – Aide au signalement (Propreté RATP)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-  <h1>Comment bien signaler un incident sur AYii – Propreté RATP ?</h1>
+<body class="bg-slate-100 text-slate-800">
+  <div class="max-w-3xl mx-auto px-4 py-6 space-y-5">
+    <header class="space-y-1">
+      <h1 class="text-2xl font-bold">Comment bien signaler un incident sur AYii – Propreté RATP ?</h1>
+      <p class="text-sm text-slate-600">
+        Quelques conseils pour que vos signalements soient vraiment utiles et puissent être traités rapidement
+        par les équipes RATP.
+      </p>
+    </header>
 
-  <p>
-    Quelques conseils pour que vos signalements soient vraiment utiles et
-    puissent être traités rapidement par les équipes RATP.
-  </p>
+    <!-- 1. Types d'incidents -->
+    <section class="space-y-3 bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+      <h2 class="font-semibold">1. Choisissez le bon type d’incident</h2>
+      <p class="text-sm">
+        Sur AYii, les principaux types d’incidents de propreté sont&nbsp;:
+      </p>
+      <ul class="text-sm list-disc pl-5 space-y-1">
+        <li><span class="font-semibold">urine</span> : présence d’urine au sol, sur un siège, dans un couloir ou un ascenseur</li>
+        <li><span class="font-semibold">vomit</span> : vomi sur le quai, dans une rame ou un escalier</li>
+        <li><span class="font-semibold">feces</span> : excréments visibles dans une zone de passage</li>
+        <li><span class="font-semibold">blood</span> : traces de sang au sol, sur un mur ou un siège</li>
+        <li><span class="font-semibold">syringe</span> : seringue ou matériel d’injection abandonné</li>
+        <li><span class="font-semibold">broken_glass</span> : verre cassé, bouteille brisée, vitrine ou fenêtre fracturée</li>
+        <li><span class="font-semibold">other</span> : autre incident de propreté ou de sécurité apparenté</li>
+      </ul>
+      <p class="text-xs text-slate-500">
+        Choisissez la catégorie qui se rapproche le plus de la situation observée.
+      </p>
+    </section>
 
-  <h2>1. Choisissez le bon type d’incident</h2>
-  <p>Sur AYii, les principaux types d’incidents de propreté sont&nbsp;:</p>
-  <ul>
-    <li><span class="tag">urine</span> présence d’urine au sol, sur un siège, dans un couloir ou ascenseur</li>
-    <li><span class="tag">vomit</span> vomi sur le quai, dans une rame ou un escalier</li>
-    <li><span class="tag">feces</span> excréments visibles dans une zone de passage</li>
-    <li><span class="tag">blood</span> traces de sang au sol, sur un mur ou un siège</li>
-    <li><span class="tag">syringe</span> seringue ou matériel d’injection abandonné</li>
-    <li><span class="tag">broken_glass</span> verre cassé, bouteille brisée, vitrine ou fenêtre fracturée</li>
-    <li><span class="tag">other</span> autre incident de propreté ou de sécurité ne rentrant pas dans les catégories ci-dessus</li>
-  </ul>
-  <p>
-    Choisissez la catégorie qui se rapproche le plus de la situation observée.
-  </p>
+    <!-- 2. Position sur la carte -->
+    <section class="space-y-3 bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+      <h2 class="font-semibold">2. Placez le point au bon endroit sur la carte</h2>
+      <p class="text-sm">
+        Zoomez si nécessaire et placez le point au plus près de l’endroit réel :
+        quai, entrée, escalier, ascenseur, couloir, plateforme de bus, etc.
+      </p>
+      <p class="text-sm">
+        Une bonne localisation permet aux équipes d’intervention de retrouver rapidement l’incident dans
+        la bonne station, la bonne rame ou la bonne zone.
+      </p>
+    </section>
 
-  <h2>2. Placez le point au bon endroit sur la carte</h2>
-  <p>
-    Zoomez si nécessaire et placez le point au plus près de l’endroit réel :
-    quai, entrée, escalier, ascenseur, couloir, plateforme du bus, etc.
-  </p>
-  <p>
-    Une bonne localisation permet aux équipes d’intervention de retrouver
-    rapidement l’incident dans le bon train, la bonne station ou la bonne zone.
-  </p>
+    <!-- 3. Photo / vidéo -->
+    <section class="space-y-3 bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+      <h2 class="font-semibold">3. Ajoutez une photo ou une courte vidéo (fortement recommandé)</h2>
+      <p class="text-sm">
+        Une image claire vaut mieux qu’une longue description. Elle aide à estimer la gravité,
+        le type de nettoyage nécessaire et le matériel à prévoir.
+      </p>
+      <ul class="text-sm list-disc pl-5 space-y-1">
+        <li>📸 <span class="font-semibold">Une photo nette</span> suffit dans la majorité des cas.</li>
+        <li>🎥 Si vous filmez, privilégiez des <span class="font-semibold">vidéos très courtes</span> (5 à 10 secondes max).</li>
+      </ul>
+      <p class="text-xs text-slate-500">
+        Des vidéos trop longues peuvent être lentes à envoyer ou échouer si la connexion est faible.
+      </p>
+    </section>
 
-  <h2>3. Ajoutez une photo ou une courte vidéo (fortement recommandé)</h2>
-  <p>
-    Une image claire vaut mieux qu’une longue description. Elle aide à
-    identifier la gravité, le type de nettoyage nécessaire et le matériel à
-    prévoir.
-  </p>
-  <ul>
-    <li>📸 <strong>Une photo nette</strong> suffit dans la plupart des cas.</li>
-    <li>🎥 Si vous filmez, privilégiez des <strong>vidéos très courtes</strong> (5 à 10 secondes maximum).</li>
-  </ul>
-  <p>
-    Des vidéos trop longues peuvent être plus lentes à envoyer ou échouer
-    si la connexion est faible.
-  </p>
+    <!-- 4. Numéro de téléphone -->
+    <section class="space-y-3 bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+      <h2 class="font-semibold">4. Laissez un numéro de téléphone joignable</h2>
+      <p class="text-sm">
+        Le numéro est <span class="font-semibold">optionnel</span>, mais très utile&nbsp;:
+        il permet aux équipes RATP ou aux services concernés de vous rappeler en cas de question
+        ou de difficulté à localiser l’incident.
+      </p>
+      <p class="text-sm">
+        Les signalements avec <span class="font-semibold">photo ou vidéo</span> et
+        <span class="font-semibold">numéro de téléphone</span> sont généralement traités en priorité.
+      </p>
+    </section>
 
-  <h2>4. Laissez un numéro de téléphone joignable</h2>
-  <p>
-    Le numéro est <strong>optionnel</strong>, mais très utile : il permet aux
-    équipes RATP ou aux services concernés de vous rappeler en cas de question
-    ou de difficulté à localiser l’incident.
-  </p>
-  <p>
-    Les signalements avec <strong>photo/vidéo</strong> et
-    <strong>numéro de téléphone</strong> sont généralement traités en priorité.
-  </p>
+    <!-- 5. Vérification avant envoi -->
+    <section class="space-y-3 bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+      <h2 class="font-semibold">5. Vérifiez avant de confirmer</h2>
+      <p class="text-sm">Avant de valider, prenez quelques secondes pour vérifier&nbsp;:</p>
+      <ul class="text-sm list-disc pl-5 space-y-1">
+        <li>le <span class="font-semibold">type d’incident</span> choisi ;</li>
+        <li>la <span class="font-semibold">position</span> sur la carte (bonne station / bon endroit) ;</li>
+        <li>la présence d’une <span class="font-semibold">photo ou vidéo</span> si possible ;</li>
+        <li>votre <span class="font-semibold">numéro de téléphone</span> si vous acceptez d’être rappelé.</li>
+      </ul>
+    </section>
 
-  <h2>5. Vérifiez avant de confirmer</h2>
-  <p>Avant de valider, prenez quelques secondes pour vérifier&nbsp;:</p>
-  <ul>
-    <li>le <strong>type d’incident</strong> choisi ;</li>
-    <li>la <strong>position</strong> sur la carte (bonne station / bon endroit) ;</li>
-    <li>la présence d’une <strong>photo ou d’une vidéo</strong> si possible ;</li>
-    <li>votre <strong>numéro de téléphone</strong> si vous acceptez d’être rappelé.</li>
-  </ul>
+    <!-- 6. Cas sans média / sans téléphone -->
+    <section class="space-y-3 bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+      <h2 class="font-semibold">6. Signalements sans média et sans téléphone</h2>
+      <p class="text-sm">
+        Les signalements <span class="font-semibold">sans photo/vidéo</span> et
+        <span class="font-semibold">sans numéro de téléphone</span> sont parfois difficiles à exploiter,
+        surtout dans des gares et stations très fréquentées.
+      </p>
+      <p class="text-sm">
+        Quand c’est possible, essayez de joindre une image et de laisser un numéro joignable.
+        Cela augmente fortement les chances que votre signalement soit compris et traité rapidement.
+      </p>
+    </section>
 
-  <h2>6. Signalements sans média et sans téléphone</h2>
-  <p>
-    Les signalements <strong>sans photo/vidéo</strong> et <strong>sans numéro de téléphone</strong>
-    sont parfois difficiles à exploiter, surtout dans des gares et stations très fréquentées.
-  </p>
-  <p>
-    Quand c’est possible, essayez de joindre une image et de laisser un numéro
-    joignable. Cela augmente fortement les chances que votre signalement
-    soit compris et traité rapidement.
-  </p>
-
-  <p style="margin-top: 1.5rem; font-size: 0.9rem; color: #6b7280;">
-    Merci pour votre aide : chaque signalement bien renseigné contribue à maintenir
-    le réseau plus propre et plus sûr pour tous les voyageurs.
-  </p>
+    <footer class="pt-4 text-xs text-center text-slate-500">
+      Merci pour votre aide : chaque signalement bien renseigné contribue à maintenir
+      le réseau plus propre et plus sûr pour tous les voyageurs.
+    </footer>
+  </div>
 </body>
 </html>
-    """
+"""
