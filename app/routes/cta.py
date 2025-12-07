@@ -1,3 +1,20 @@
+# app/routes/cta.py
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+import os
+
+from app.db import get_db
+
+router = APIRouter(prefix="/cta", tags=["CTA"])
+
+
+def _auth_admin(request: Request):
+    admin_tok = (os.getenv("ADMIN_TOKEN") or "").strip()
+    req_tok = (request.headers.get("x-admin-token") or "").strip()
+    if admin_tok and req_tok != admin_tok:
+        raise HTTPException(status_code=401, detail="invalid admin token")
+
 @router.get("/incidents_v2")
 async def cta_incidents_v2(
     request: Request,
@@ -71,8 +88,6 @@ async def cta_incidents_v2(
         items = []
         for r in rows:
             m = r._mapping
-
-            # on utilise .get() partout pour éviter les KeyError
             items.append(
                 {
                     "id": m.get("id"),
@@ -101,10 +116,19 @@ async def cta_incidents_v2(
         }
 
     except Exception as e:
-        # ici on attrape TOUT : SQL + mapping
         if debug:
             raise HTTPException(
                 status_code=500,
-                detail=f"cta_incidents_v2 error: {e}"
+                detail=f"cta_incidents_v2 error: {e}",
             )
         raise HTTPException(status_code=500, detail="cta_incidents_v2 error")
+
+@router.get("/incidents")
+async def cta_incidents(
+    request: Request,
+    status: str = Query("", description="new|confirmed|resolved"),
+    limit: int = Query(20, ge=1, le=200),
+    debug: int = Query(0),
+    db: AsyncSession = Depends(get_db),
+):
+    return await cta_incidents_v2(request, status, limit, debug, db)
